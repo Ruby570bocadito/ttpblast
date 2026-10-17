@@ -1,0 +1,75 @@
+name: Sysmon lab
+
+# Laboratorio en una máquina Windows desechable de GitHub: instala Sysmon con
+# los mismos comandos del README, genera actividad benigna (compilar, comandos
+# de administración habituales y una descarga web), exporta los eventos con
+# scripts/export-sysmon.ps1 y comprueba que ttpblast los lee y los codifica.
+# Se lanza a mano (Actions → Sysmon lab → Run workflow) o cuando cambia algo
+# de la cadena de Sysmon.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/export-sysmon.ps1'
+      - 'src/sysmon.rs'
+      - 'src/events.rs'
+      - 'alphabet/**'
+      - '.github/workflows/sysmon-lab.yml'
+
+jobs:
+  lab:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Instalar Sysmon (los mismos comandos que el README)
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Force C:\Tools\Sysmon | Out-Null
+          Invoke-WebRequest https://download.sysinternals.com/files/Sysmon.zip -OutFile C:\Tools\Sysmon\Sysmon.zip
+          Expand-Archive C:\Tools\Sysmon\Sysmon.zip -DestinationPath C:\Tools\Sysmon -Force
+          Invoke-WebRequest https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml -OutFile C:\Tools\Sysmon\sysmonconfig.xml
+          C:\Tools\Sysmon\Sysmon64.exe -accepteula -i C:\Tools\Sysmon\sysmonconfig.xml
+          Get-Service Sysmon64
+
+      - name: Actividad benigna
+        run: |
+          cargo build --release
+          .\target\release\ttpblast.exe synth --out data\demo | Out-Null
+          whoami
+          hostname
+          systeminfo | Select-Object -First 5
+          schtasks /query /fo LIST | Select-Object -First 5
+          Invoke-WebRequest https://example.com -UseBasicParsing | Out-Null
+          Start-Sleep -Seconds 15
+
+      - name: Exportar y analizar
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          .\target\release\ttpblast.exe encode --events data\sysmon\events.ndjson --unmatched 20 | Tee-Object -FilePath data\sysmon\encode.txt
+          .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --details 1
+          .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --json | Out-File -Encoding utf8 data\sysmon\result.json
+
+      - name: Comprobar que los comandos del laboratorio se codifican
+        run: |
+          $sequence = (Get-Content data\sysmon\encode.txt)[0]
+          foreach ($symbol in 'ACD', 'SID', 'TSK', 'PSH') {
+            if ($sequence -notmatch "\b$symbol\b") {
+              Write-Host "Falta $symbol en la secuencia: $sequence"
+              exit 1
+            }
+          }
+          Write-Host "OK: $sequence"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sysmon-lab
+          path: data/sysmon/
+          retention-days: 7
