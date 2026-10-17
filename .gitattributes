@@ -1,0 +1,3 @@
+# Los .cmd necesitan CRLF para que cmd.exe los lea bien; los .sh, LF.
+*.cmd text eol=crlf
+*.sh text eol=lf

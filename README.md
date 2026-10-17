@@ -58,12 +58,23 @@ dos ideas a la telemetría de endpoint.
 
 ## Inicio rápido
 
+Linux, macOS o WSL:
+
 ```bash
 git clone https://github.com/Ruby570bocadito/ttpblast && cd ttpblast
 ./demo.sh
 ```
 
-Necesita Rust (edición 2024; probado con 1.97). La única dependencia es `serde_json`.
+Windows (cmd; en PowerShell, `.\demo.cmd`):
+
+```bat
+git clone https://github.com/Ruby570bocadito/ttpblast && cd ttpblast
+demo
+```
+
+Necesita Rust (edición 2024; probado con 1.97), que se instala desde
+[rustup.rs](https://rustup.rs). En Windows, el instalador pide además las herramientas de
+compilación de C++ de Visual Studio. La única dependencia es `serde_json`.
 
 ```bash
 ttpblast synth --out data/demo                     # telemetría sintética + verdad (truth.json)
