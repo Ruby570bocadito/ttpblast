@@ -47,7 +47,11 @@ $filter = @{
 
 # UTF-8 sin BOM: un BOM al principio estropearía la primera línea JSON.
 $writer = New-Object System.IO.StreamWriter($path, $false, (New-Object System.Text.UTF8Encoding($false)))
+# Windows reutiliza los PID: solo son "propios" los eventos con nuestro PID
+# desde que arrancó este proceso.
+$started = (Get-Process -Id $PID).StartTime.AddSeconds(-5)
 $count = 0
+$own = 0
 $failure = $null
 try {
     Get-WinEvent -FilterHashtable $filter | ForEach-Object {
@@ -57,11 +61,18 @@ try {
             'host.name'       = $_.MachineName
             'sysmon.event_id' = $_.Id
         }
+        $isOwn = $false
         foreach ($data in $xml.Event.EventData.Data) {
+            # Este mismo script (su PowerShell y el fichero temporal que crea
+            # al arrancar) no es actividad del equipo: se omite.
+            if ($data.Name -eq 'ProcessId' -and $data.'#text' -eq "$PID" -and $_.TimeCreated -ge $started) {
+                $isOwn = $true
+            }
             if ($wanted -contains $data.Name -and $data.'#text') {
                 $record[$data.Name] = $data.'#text'
             }
         }
+        if ($isOwn) { $own++; return }
         $writer.WriteLine((ConvertTo-Json -InputObject $record -Compress))
         $count++
     }
@@ -81,6 +92,6 @@ if ($failure) {
     exit 1
 }
 
-Write-Host "$count eventos de Sysmon de los últimos $Days días -> $path"
+Write-Host "$count eventos de Sysmon de los últimos $Days días -> $path ($own del propio script, omitidos)"
 Write-Host 'Siguiente paso:'
 Write-Host "  .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events $Out"
