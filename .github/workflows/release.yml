@@ -1,0 +1,47 @@
+name: Release
+
+# Al subir una etiqueta de versión (git tag v0.1.0 && git push origin v0.1.0),
+# compila ttpblast para Windows, Linux y macOS y publica los binarios en una
+# release de GitHub, para usarlo sin instalar Rust.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, archive: zip }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, archive: tar.gz }
+          - { os: macos-latest, target: aarch64-apple-darwin, archive: tar.gz }
+          - { os: macos-latest, target: x86_64-apple-darwin, archive: tar.gz }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Empaquetar
+        shell: bash
+        run: |
+          name="ttpblast-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          cp README.md LICENSE-MIT LICENSE-APACHE "$name"/
+          cp -r alphabet queries scripts "$name"/
+          if [ "${{ matrix.archive }}" = zip ]; then
+            cp "target/${{ matrix.target }}/release/ttpblast.exe" "$name"/
+            7z a "$name.zip" "$name"
+          else
+            cp "target/${{ matrix.target }}/release/ttpblast" "$name"/
+            tar czf "$name.tar.gz" "$name"
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ttpblast-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive }}
