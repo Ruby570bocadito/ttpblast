@@ -79,6 +79,7 @@ compilación de C++ de Visual Studio. La única dependencia es `serde_json`.
 ```bash
 ttpblast synth --out data/demo                     # telemetría sintética + verdad (truth.json)
 ttpblast search --query queries/phishing-lateral.txt --events data/demo/events.ndjson
+ttpblast search ... --json                         # lo mismo en JSON, para scripts y otras herramientas
 ttpblast encode --events data/demo/events.ndjson --host ws-finance-04   # el "genoma" de un host
 ttpblast alphabet                                  # símbolos disponibles
 ttpblast --help                                    # todas las opciones
@@ -185,9 +186,9 @@ E ≤ 1 y ~1,9 con E ≤ 0,1.
 
 | Barajado | Modelo nulo | Benignos E ≤ 1 | Benignos E ≤ 0,1 | Exacta (E mediana) | Variante | Parcial |
 |---|---|---|---|---|---|---|
-| bloques de 3 (por defecto) | `cola` (por defecto) | 9 | 0 | 4,8·10⁻⁶ | 4,6·10⁻⁴ | 5,0·10⁻² |
+| bloques de 3 (por defecto) | `cola` (por defecto) | 9 | 0 | 4,8·10⁻⁶ | 4,6·10⁻⁴ | 4,5·10⁻² |
 | bloques de 3 (por defecto) | `gumbel` | 18 | 1 | 1,3·10⁻⁸ | 2,5·10⁻⁵ | 2,9·10⁻³ |
-| bloques de 1 | `cola` | 4 | 0 | 6,5·10⁻⁶ | 3,7·10⁻³ | 5,0·10⁻² |
+| bloques de 1 | `cola` | 4 | 0 | 6,5·10⁻⁶ | 3,7·10⁻³ | 4,5·10⁻² |
 | bloques de 1 | `gumbel` | 13 | 1 | 2,1·10⁻⁸ | 1,9·10⁻⁴ | 4,4·10⁻³ |
 
 - En todas las filas, las tres cadenas quedan entre los 3 primeros puestos en los 20

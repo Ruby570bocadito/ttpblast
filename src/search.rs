@@ -13,6 +13,8 @@ use crate::sequence::{self, HostSeq};
 use crate::stats::{self, Gumbel, Tail};
 use crate::time;
 
+use serde_json::{Value, json};
+
 pub struct Options {
     pub query: String,
     pub events: String,
@@ -27,6 +29,7 @@ pub struct Options {
     pub maxspan: i64,
     pub max_gap: i64,
     pub null_model: NullModel,
+    pub json: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -131,6 +134,60 @@ pub fn run(opts: &Options) -> Result<(), String> {
     let mut all_hosts: Vec<&str> = loaded.events.iter().map(|e| e.host.as_str()).collect();
     all_hosts.sort_unstable();
     all_hosts.dedup();
+    let shown: Vec<&Hit> = hits
+        .iter()
+        .filter(|h| h.alignment.is_some() && h.evalue <= opts.max_evalue)
+        .take(opts.max_hits)
+        .collect();
+
+    if opts.json {
+        let ctx = Context {
+            query: &query,
+            alphabet: &alphabet,
+            scoring: &scoring,
+            events: &loaded.events,
+            shuffles: opts.shuffles,
+        };
+        let baseline = opts.baseline.then(|| {
+            json!({
+                "maxspan": opts.maxspan,
+                "matches": baseline_matches(&seqs, &query, &loaded.events, opts.maxspan)
+                    .into_iter()
+                    .map(|(seq, a, b)| json!({
+                        "host": seq.host,
+                        "start": loaded.events[seq.events[a]].ts.map(time::format_rfc3339),
+                        "end": loaded.events[seq.events[b]].ts.map(time::format_rfc3339),
+                    }))
+                    .collect::<Vec<_>>(),
+            })
+        });
+        let doc = json!({
+            "ttpblast": env!("CARGO_PKG_VERSION"),
+            "query": { "file": opts.query, "steps": query.iter().map(|&s| alphabet.code(s)).collect::<Vec<_>>() },
+            "telemetry": {
+                "file": opts.events,
+                "events": loaded.events.len(),
+                "skipped_lines": loaded.skipped,
+                "hosts": all_hosts.len(),
+                "encoded_events": encoded,
+                "hosts_with_symbols": seqs.len(),
+                "stretches": segments.iter().map(Vec::len).sum::<usize>(),
+            },
+            "settings": {
+                "shuffles": opts.shuffles,
+                "block": opts.block,
+                "seed": opts.seed,
+                "null": match opts.null_model { NullModel::Tail => "tail", NullModel::Gumbel => "gumbel" },
+                "max_gap": opts.max_gap,
+                "max_evalue": opts.max_evalue,
+            },
+            "hits": shown.iter().enumerate().map(|(i, hit)| hit_json(i + 1, hit, &ctx)).collect::<Vec<_>>(),
+            "baseline": baseline,
+        });
+        let text = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+        println!("{text}");
+        return Ok(());
+    }
 
     println!(
         "ttpblast {} · alineamiento local de cadenas de ataque\n",
@@ -190,11 +247,6 @@ pub fn run(opts: &Options) -> Result<(), String> {
         seqs.len()
     );
 
-    let shown: Vec<&Hit> = hits
-        .iter()
-        .filter(|h| h.alignment.is_some() && h.evalue <= opts.max_evalue)
-        .take(opts.max_hits)
-        .collect();
     print_table(&shown, &query, &loaded.events, opts.max_evalue);
 
     if opts.baseline {
@@ -387,18 +439,29 @@ fn print_table(hits: &[&Hit], query: &[usize], events: &[Event], max_evalue: f64
     println!("  (= pasos idénticos · ~ pasos sustituidos · huecos = pasos extra o que faltan)\n");
 }
 
+/// Hosts where the exact baseline matches, with the matched span.
+fn baseline_matches<'a>(
+    seqs: &'a [HostSeq],
+    query: &[usize],
+    events: &[Event],
+    maxspan: i64,
+) -> Vec<(&'a HostSeq, usize, usize)> {
+    seqs.iter()
+        .filter_map(|seq| exact_sequence(query, seq, events, maxspan).map(|(a, b)| (seq, a, b)))
+        .collect()
+}
+
 fn print_baseline(seqs: &[HostSeq], query: &[usize], events: &[Event], maxspan: i64) {
-    let found: Vec<String> = seqs
-        .iter()
-        .filter_map(|seq| {
-            let (a, b) = exact_sequence(query, seq, events, maxspan)?;
+    let found: Vec<String> = baseline_matches(seqs, query, events, maxspan)
+        .into_iter()
+        .map(|(seq, a, b)| {
             let span = match (events[seq.events[a]].ts, events[seq.events[b]].ts) {
                 (Some(ta), Some(tb)) => {
                     format!(" ({} → {})", time::format_human(ta), time::format_clock(tb))
                 }
                 _ => String::new(),
             };
-            Some(format!("{}{span}", seq.host))
+            format!("{}{span}", seq.host)
         })
         .collect();
     println!(
@@ -559,6 +622,100 @@ fn print_evidence(
     );
 }
 
+/// What a hit is reported against.
+struct Context<'a> {
+    query: &'a [usize],
+    alphabet: &'a Alphabet,
+    scoring: &'a Scoring,
+    events: &'a [Event],
+    shuffles: usize,
+}
+
+/// A hit as JSON: summary, null model and the alignment with its evidence.
+fn hit_json(rank: usize, hit: &Hit, ctx: &Context) -> Value {
+    let Some(aln) = &hit.alignment else {
+        return Value::Null;
+    };
+    let seq = hit.seq;
+    let time_of = |t: usize| ctx.events[seq.events[t]].ts.map(time::format_rfc3339);
+    let technique = |s: usize| ctx.alphabet.symbols[s].technique.as_str();
+    let steps: Vec<Value> = aln
+        .steps
+        .iter()
+        .map(|step| match *step {
+            Step::Pair { q, t } => {
+                let (a, b) = (ctx.query[q], seq.symbols[t]);
+                let relation = if a == b {
+                    "identical"
+                } else if ctx.scoring.score(a, b) > 0 {
+                    "similar"
+                } else {
+                    "different"
+                };
+                json!({
+                    "kind": "pair",
+                    "query_step": q + 1,
+                    "query": ctx.alphabet.code(a),
+                    "host": ctx.alphabet.code(b),
+                    "technique": technique(b),
+                    "relation": relation,
+                    "time": time_of(t),
+                    "event": describe(&ctx.events[seq.events[t]]),
+                })
+            }
+            Step::Extra { t } => json!({
+                "kind": "extra",
+                "host": ctx.alphabet.code(seq.symbols[t]),
+                "technique": technique(seq.symbols[t]),
+                "time": time_of(t),
+                "event": describe(&ctx.events[seq.events[t]]),
+            }),
+            Step::Missing { q } => json!({
+                "kind": "missing",
+                "query_step": q + 1,
+                "query": ctx.alphabet.code(ctx.query[q]),
+                "technique": technique(ctx.query[q]),
+            }),
+        })
+        .collect();
+    let null_model = match &hit.null {
+        Null::Tail { fit, misfit } => json!({
+            "model": "tail",
+            "threshold": fit.threshold,
+            "p_threshold": fit.p_threshold,
+            "lambda": fit.lambda,
+            "misfit": misfit,
+            "critical": stats::ks_critical(fit.count),
+        }),
+        Null::Gumbel { fit, ks } => json!({
+            "model": "gumbel",
+            "mu": fit.mu,
+            "lambda": fit.lambda,
+            "misfit": ks,
+            "critical": stats::ks_critical(ctx.shuffles),
+        }),
+        Null::Empirical => json!({ "model": "empirical" }),
+        Null::NotNeeded => Value::Null,
+    };
+    let (identical, substituted, gaps) = counts(aln, ctx.query, seq);
+    let (first, last) = aln.host_span();
+    json!({
+        "rank": rank,
+        "host": seq.host,
+        "score": aln.score,
+        "evalue": hit.evalue,
+        "p": hit.p,
+        "start": time_of(first),
+        "end": time_of(last),
+        "steps_covered": aln.pairs().count(),
+        "identical": identical,
+        "substituted": substituted,
+        "gaps": gaps,
+        "null": null_model,
+        "alignment": steps,
+    })
+}
+
 /// One line saying what the event was, from the fields the alphabet uses.
 fn describe(event: &Event) -> String {
     let process = event.get("process.name").unwrap_or("?");
@@ -686,6 +843,61 @@ mod tests {
         assert_eq!(codes(&a, &q), "UEX PSH C2W ITT");
         assert!(parse_query("UEX XYZ", &a).is_err());
         assert!(parse_query("# nada", &a).is_err());
+    }
+
+    #[test]
+    fn hit_json_reports_alignment_and_null_model() {
+        let alphabet = Alphabet::default_set();
+        let code = |c: &str| alphabet.lookup(c).unwrap();
+        let events: Vec<Event> = (0..3)
+            .map(|i| {
+                Event::from_json(&json!({
+                    "@timestamp": time::format_rfc3339(1_800_000_000 + i * 60),
+                    "host": { "name": "pc" },
+                    "event": { "action": "start" },
+                    "process": { "name": "cmd.exe", "parent": { "name": "explorer.exe" } },
+                }))
+                .unwrap()
+            })
+            .collect();
+        let seq = HostSeq {
+            host: "pc".into(),
+            symbols: vec![code("CMD"), code("ACD"), code("SID")],
+            events: vec![0, 1, 2],
+        };
+        let query = vec![code("PSH"), code("SID")];
+        let scoring = Scoring::from_background(&alphabet, &vec![1; alphabet.symbols.len()]);
+        let hit = Hit {
+            seq: &seq,
+            alignment: Some(Alignment {
+                score: 3,
+                steps: vec![
+                    Step::Pair { q: 0, t: 0 },
+                    Step::Extra { t: 1 },
+                    Step::Pair { q: 1, t: 2 },
+                ],
+            }),
+            p: 0.5,
+            evalue: 0.5,
+            null: Null::Empirical,
+        };
+        let ctx = Context {
+            query: &query,
+            alphabet: &alphabet,
+            scoring: &scoring,
+            events: &events,
+            shuffles: 200,
+        };
+        let v = hit_json(1, &hit, &ctx);
+        assert_eq!(v["host"], "pc");
+        assert_eq!(v["null"]["model"], "empirical");
+        assert_eq!(v["identical"], 1);
+        assert_eq!(v["substituted"], 1);
+        assert_eq!(v["gaps"], 1);
+        assert_eq!(v["alignment"][0]["relation"], "similar");
+        assert_eq!(v["alignment"][1]["kind"], "extra");
+        assert_eq!(v["start"], time::format_rfc3339(1_800_000_000));
+        assert_eq!(v["end"], time::format_rfc3339(1_800_000_120));
     }
 
     #[test]

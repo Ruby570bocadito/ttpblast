@@ -22,6 +22,7 @@ Uso:
   ttpblast synth [--out DIR] [--days N] [--seed N]
   ttpblast encode --events FICHERO [--host NOMBRE] [--unmatched N] [--alphabet FICHERO]
   ttpblast alphabet [--alphabet FICHERO]
+  ttpblast --version
 
 Opciones de search:
   --alphabet FICHERO   alfabeto JSON (por defecto, el incluido)
@@ -38,6 +39,7 @@ Opciones de search:
                        cortar (3600)
   --maxspan SEG        ventana de la línea base exacta, en segundos (7200)
   --no-baseline        no ejecutar la línea base exacta
+  --json               resultados en JSON (para scripts y otras herramientas)
 
 Opciones de encode:
   --unmatched N        listar los N tipos de evento sin símbolo más frecuentes
@@ -72,7 +74,7 @@ fn run(args: &[String]) -> Result<(), String> {
                     "query", "events", "alphabet", "shuffles", "block", "seed", "evalue",
                     "max-hits", "details", "maxspan", "max-gap", "null",
                 ],
-                &["no-baseline"],
+                &["no-baseline", "json"],
             )?;
             search::run(&search::Options {
                 query: flags.required("query")?.to_string(),
@@ -88,6 +90,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 maxspan: flags.number("maxspan", 7200)?,
                 max_gap: flags.number("max-gap", 3600)?,
                 null_model: search::NullModel::parse(flags.text("null").unwrap_or("cola"))?,
+                json: flags.has("json"),
             })
         }
         "synth" => {
@@ -141,6 +144,10 @@ fn run(args: &[String]) -> Result<(), String> {
                     s.code, s.technique, s.tactic, s.name
                 );
             }
+            Ok(())
+        }
+        "-V" | "--version" => {
+            println!("ttpblast {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         "-h" | "--help" | "help" => {

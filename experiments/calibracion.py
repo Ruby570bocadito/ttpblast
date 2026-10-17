@@ -16,24 +16,21 @@ Solo usa la biblioteca estándar.
 """
 
 import argparse
-import re
+import json
 import subprocess
 from pathlib import Path
 
 ATTACK_HOSTS = {"ws-legal-02": "exacta", "ws-finance-04": "variante", "ws-sales-03": "parcial"}
-ROW = re.compile(r"\s+(\d+)\s+(\S+)\s+(-?\d+)\s+(\S+)\s+\d+/\d+")
 
 
 def search(binary, events, query, null_model, extra):
     out = subprocess.run(
         [binary, "search", "--query", query, "--events", events, "--null", null_model,
-         "--evalue", "1e12", "--max-hits", "1000", "--details", "0", "--no-baseline", *extra],
+         "--evalue", "1e12", "--max-hits", "1000", "--no-baseline", "--json", *extra],
         check=True, capture_output=True, text=True,
     ).stdout
-    for line in out.splitlines():
-        m = ROW.match(line)
-        if m:
-            yield int(m.group(1)), m.group(2), float(m.group(4).replace(",", "."))
+    for hit in json.loads(out)["hits"]:
+        yield hit["rank"], hit["host"], hit["evalue"]
 
 
 def main():
@@ -43,7 +40,7 @@ def main():
     parser.add_argument("--query", default="queries/phishing-lateral.txt")
     parser.add_argument("--work", default="data/calibracion")
     parser.add_argument("--extra", default="",
-                        help='opciones extra para "ttpblast search", p. ej. "--block 3 --exclude-hit"')
+                        help='opciones extra para "ttpblast search", p. ej. --extra="--block 1"')
     args = parser.parse_args()
     extra = args.extra.split()
 
