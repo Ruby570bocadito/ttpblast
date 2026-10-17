@@ -27,21 +27,26 @@ pub fn normalize(fields: &mut HashMap<String, String>) {
             ("process.parent.name", process("ParentImage")),
         ]),
         "3" => {
-            // Inbound connections have this host as the destination; the
-            // alphabet describes what the host itself does.
+            // Inbound connections have this host as the destination, and the
+            // alphabet describes what the host itself does: no category, so
+            // no symbol encodes them.
             if data("Initiated").as_deref() == Some("false") {
-                return;
+                derived.extend([
+                    ("network.direction", Some("inbound".into())),
+                    ("process.name", process("Image")),
+                ]);
+            } else {
+                derived.extend([
+                    ("event.category", Some("network".into())),
+                    ("event.action", Some("connection".into())),
+                    ("process.name", process("Image")),
+                    ("destination.port", data("DestinationPort")),
+                    (
+                        "destination.address",
+                        data("DestinationHostname").or_else(|| data("DestinationIp")),
+                    ),
+                ]);
             }
-            derived.extend([
-                ("event.category", Some("network".into())),
-                ("event.action", Some("connection".into())),
-                ("process.name", process("Image")),
-                ("destination.port", data("DestinationPort")),
-                (
-                    "destination.address",
-                    data("DestinationHostname").or_else(|| data("DestinationIp")),
-                ),
-            ]);
         }
         "10" => derived.extend([
             ("event.category", Some("process".into())),

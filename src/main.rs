@@ -20,7 +20,7 @@ local, al estilo BLAST, y dice cómo de significativo es cada parecido.
 Uso:
   ttpblast search --query FICHERO --events FICHERO [opciones]
   ttpblast synth [--out DIR] [--days N] [--seed N]
-  ttpblast encode --events FICHERO [--host NOMBRE] [--alphabet FICHERO]
+  ttpblast encode --events FICHERO [--host NOMBRE] [--unmatched N] [--alphabet FICHERO]
   ttpblast alphabet [--alphabet FICHERO]
 
 Opciones de search:
@@ -37,6 +37,9 @@ Opciones de search:
                        cortar (3600)
   --maxspan SEG        ventana de la línea base exacta, en segundos (7200)
   --no-baseline        no ejecutar la línea base exacta
+
+Opciones de encode:
+  --unmatched N        listar los N tipos de evento sin símbolo más frecuentes
 
 Opciones de synth:
   --out DIR            carpeta de salida (data/demo)
@@ -95,16 +98,35 @@ fn run(args: &[String]) -> Result<(), String> {
             })
         }
         "encode" => {
-            let flags = Flags::parse(rest, &["events", "host", "alphabet"], &[])?;
+            let flags = Flags::parse(rest, &["events", "host", "alphabet", "unmatched"], &[])?;
             let alphabet = search::load_alphabet(flags.text("alphabet"))?;
             let loaded = events::load_ndjson(flags.required("events")?)?;
+            let unmatched: usize = flags.number("unmatched", 0)?;
             let wanted = flags.text("host").map(str::to_lowercase);
-            for seq in sequence::build(&loaded.events, &alphabet) {
+            let seqs = sequence::build(&loaded.events, &alphabet);
+            for seq in &seqs {
                 if wanted.as_ref().is_some_and(|h| *h != seq.host) {
                     continue;
                 }
                 let codes: Vec<&str> = seq.symbols.iter().map(|&s| alphabet.code(s)).collect();
                 println!("{:<16} {:>4}  {}", seq.host, codes.len(), codes.join(" "));
+            }
+            let encoded: usize = seqs.iter().map(|s| s.symbols.len()).sum();
+            println!(
+                "\n{} eventos leídos · {} con símbolo, en {} hosts · {} líneas ignoradas (sin JSON válido o sin host)",
+                loaded.events.len(),
+                encoded,
+                seqs.len(),
+                loaded.skipped
+            );
+            if encoded == 0 && unmatched == 0 {
+                println!(
+                    "Ningún evento encaja con el alfabeto. Con poca actividad es normal; \
+                     `--unmatched 10` enseña qué tipos de eventos hay."
+                );
+            }
+            if unmatched > 0 {
+                print_unmatched(&loaded.events, &alphabet, unmatched);
             }
             Ok(())
         }
@@ -128,6 +150,49 @@ fn run(args: &[String]) -> Result<(), String> {
             "orden desconocida «{other}». Usa `ttpblast --help`"
         )),
     }
+}
+
+/// The most frequent kinds of events that no symbol encodes: what the
+/// alphabet is not seeing in this data.
+fn print_unmatched(events: &[events::Event], alphabet: &alphabet::Alphabet, top: usize) {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for event in events.iter().filter(|e| alphabet.encode(e).is_none()) {
+        *counts.entry(event_kind(event)).or_default() += 1;
+    }
+    let mut kinds: Vec<(String, usize)> = counts.into_iter().collect();
+    kinds.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    println!("\nEventos sin símbolo más frecuentes:");
+    if kinds.is_empty() {
+        println!("  (ninguno: todos encajan)");
+    }
+    for (kind, count) in kinds.iter().take(top) {
+        println!("  {count:>7}  {kind}");
+    }
+}
+
+/// "process/start  powershell.exe ← explorer.exe", "file/creation  chrome.exe .pdf"...
+fn event_kind(event: &events::Event) -> String {
+    let what = match (event.get("event.category"), event.get("event.action")) {
+        (Some(category), Some(action)) => format!("{category}/{action}"),
+        _ if event.get("network.direction") == Some("inbound") => "network/entrante".to_string(),
+        _ => match event.get("sysmon.event_id") {
+            Some(id) => format!("sysmon evento {id}"),
+            None => "sin categoría".to_string(),
+        },
+    };
+    let process = event.get("process.name").unwrap_or("?");
+    let detail = if let Some(parent) = event.get("process.parent.name") {
+        format!(" ← {parent}")
+    } else if let Some(target) = event.get("process.target.name") {
+        format!(" → {target}")
+    } else if let Some(port) = event.get("destination.port") {
+        format!(" → puerto {port}")
+    } else if let Some(extension) = event.get("file.extension") {
+        format!(" .{extension}")
+    } else {
+        String::new()
+    };
+    format!("{what:<20} {process}{detail}")
 }
 
 struct Flags(HashMap<String, Option<String>>);
