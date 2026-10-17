@@ -11,16 +11,16 @@ E-value.
 ```text
 Resultados con E ≤ 10
    #  host              punt.   E-value  pasos    =    ~  huecos  duración
-   1  ws-legal-02          44    6.8e-6    9/9    9    0       0    21 min
-   2  ws-sales-03          18    1.7e-3    4/9    4    0       0     5 min
-   3  ws-finance-04        29    4.2e-3    9/9    5    4       2    24 min
-   4  ws-sales-04           8      1,99    2/9    2    0       0     5 min
+   1  ws-legal-02          44    1.7e-6    9/9    9    0       0    21 min
+   2  ws-sales-03          18    4.0e-4    4/9    4    0       0     5 min
+   3  ws-finance-04        29    1.4e-3    9/9    5    4       2    24 min
+   4  ws-sales-04           8      2,59    2/9    2    0       0     5 min
    ...
 
 Línea base    secuencia exacta, en orden, en ≤ 120 min (como `sequence … with maxspan` de EQL): 1 host
               ws-legal-02 (2026-10-07 10:02:00 → 10:23:00)
 
-▸ ws-finance-04 · puntuación 29 · E = 4.2e-3 (p = 1.0e-4)
+▸ ws-finance-04 · puntuación 29 · E = 1.4e-3 (p = 3.5e-5)
   2026-10-12 09:14:00 → 09:38:04 (24 min)
 
   consulta  UEX  PSH  C2W  ITT  RUN  ACD  ---  ---  SID  LSA  SMB
@@ -38,7 +38,7 @@ Línea base    secuencia exacta, en orden, en ≤ 120 min (como `sequence … wi
 La búsqueda exacta solo encuentra la copia idéntica de la cadena. `ttpblast` encuentra
 también la variante (con cmd en vez de PowerShell, tarea programada en vez de clave Run,
 WinRM en vez de SMB y dos pasos de más) y la cadena cortada a medias. Las tres quedan muy
-por encima de todo lo demás: el siguiente host tiene E ≈ 2, que es lo esperable por azar.
+por encima de todo lo demás: el siguiente host tiene E ≈ 2,6, que es lo esperable por azar.
 
 ## El problema
 
@@ -151,14 +151,17 @@ powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
 5. **Significación.**
    - Se barajan 200 veces los símbolos del propio host, manteniendo la longitud de los
      tramos, y se alinea la consulta contra cada barajado.
+   - Se baraja por bloques de 3 símbolos (`--block`), para conservar las ráfagas de
+     actividad. La región del mejor alineamiento, en cambio, se baraja símbolo a símbolo:
+     así la propia cadena no queda entera, en trozos, dentro de su modelo de azar.
    - A la cola de esas puntuaciones se le ajusta una exponencial (la forma de
      Karlin-Altschul): `P(S ≥ s) ≈ P(S ≥ u) · e^(−λ(s−u))`, donde `u` es el umbral de la
      cola (justo por encima de la mediana) y `λ` la tasa de caída.
    - `E = p × número de hosts` es el número de hosts que esperarías ver con una
      puntuación así por puro azar.
    - Cada host se compara consigo mismo. Un administrador hace descubrimiento todo el día,
-     así que su puntuación de 10 no sorprende (E = 5,4). La puntuación de 18 de un
-     portátil de ventas sí sorprende (E = 1,7·10⁻³).
+     así que su puntuación de 10 no sorprende (E ≈ 21). La puntuación de 18 de un
+     portátil de ventas sí sorprende (E = 4,0·10⁻⁴).
    - La salida enseña el diagnóstico del ajuste: si la cola no parece exponencial, lo
      marca con ⚠.
 
@@ -171,27 +174,37 @@ servidor de copias que comprime y sube datos cada noche, y tres cadenas inyectad
 
 | Escenario | Qué cambia respecto a la consulta | Búsqueda exacta | ttpblast |
 |---|---|---|---|
-| `exacta` | nada | sí | puesto 1, E = 6,8·10⁻⁶ |
-| `variante` | 4 técnicas sustituidas y 2 pasos de más | no | puesto 3, E = 4,2·10⁻³ |
-| `parcial` | solo los 4 primeros pasos | no | puesto 2, E = 1,7·10⁻³ |
+| `exacta` | nada | sí | puesto 1, E = 1,7·10⁻⁶ |
+| `variante` | 4 técnicas sustituidas y 2 pasos de más | no | puesto 3, E = 1,4·10⁻³ |
+| `parcial` | solo los 4 primeros pasos | no | puesto 2, E = 4,0·10⁻⁴ |
 
-**Calibración** (`python3 experiments/calibracion.py --seeds 20`): 20 conjuntos de datos
-con semillas distintas, 37 hosts benignos en cada uno. Si los E-values estuvieran bien
-calibrados, saldrían ~18,5 hosts benignos con E ≤ 1 y ~1,9 con E ≤ 0,1.
+**Calibración** (`python3 experiments/calibracion.py --seeds 20`, y `--extra="--block 1"`
+para las otras filas): 20 conjuntos de datos con semillas distintas, 37 hosts benignos en
+cada uno. Si los E-values estuvieran bien calibrados, saldrían ~18,5 hosts benignos con
+E ≤ 1 y ~1,9 con E ≤ 0,1.
 
-| Modelo nulo | Benignos con E ≤ 1 | Benignos con E ≤ 0,1 | Exacta (E mediana) | Variante (E mediana) | Parcial (E mediana) |
-|---|---|---|---|---|---|
-| `cola` (por defecto) | 4 | 0 | 6,5·10⁻⁶ | 3,7·10⁻³ | 5,0·10⁻² |
-| `gumbel` | 13 | 1 | 2,1·10⁻⁸ | 1,9·10⁻⁴ | 4,4·10⁻³ |
+| Barajado | Modelo nulo | Benignos E ≤ 1 | Benignos E ≤ 0,1 | Exacta (E mediana) | Variante | Parcial |
+|---|---|---|---|---|---|---|
+| bloques de 3 (por defecto) | `cola` (por defecto) | 9 | 0 | 4,8·10⁻⁶ | 4,6·10⁻⁴ | 5,0·10⁻² |
+| bloques de 3 (por defecto) | `gumbel` | 18 | 1 | 1,3·10⁻⁸ | 2,5·10⁻⁵ | 2,9·10⁻³ |
+| bloques de 1 | `cola` | 4 | 0 | 6,5·10⁻⁶ | 3,7·10⁻³ | 5,0·10⁻² |
+| bloques de 1 | `gumbel` | 13 | 1 | 2,1·10⁻⁸ | 1,9·10⁻⁴ | 4,4·10⁻³ |
 
-- Con los dos modelos, las tres cadenas quedan entre los 3 primeros puestos en los 20
+- En todas las filas, las tres cadenas quedan entre los 3 primeros puestos en los 20
   conjuntos.
-- **Los dos modelos son conservadores** en estos datos: dan menos falsas alarmas de las
-  que prometen. La cola exponencial lo es más.
-  - Es la opción por defecto porque se equivoca hacia el lado seguro y su forma describe
-    mejor la cola que se observa.
-  - La Gumbel completa no modela el "suelo" que se forma cuando un símbolo raro aparece en
-    todos los barajados.
+- **La cola exponencial es conservadora:** da menos falsas alarmas de las que promete.
+  Con bloques de 3, la Gumbel queda prácticamente calibrada.
+  - La cola sigue por defecto porque se equivoca hacia el lado seguro y describe mejor la
+    forma de la cola que se observa. La Gumbel completa no modela el "suelo" que se forma
+    cuando un símbolo raro aparece en todos los barajados.
+  - Con telemetría real habrá que volver a elegir.
+- **Lo que se probó y no funcionó:**
+  - *Bloques de 3 sin desordenar la región alineada.* La cadena queda en trozos dentro de
+    su propio modelo de azar y se penaliza: la E mediana de la exacta sube a 4·10⁻² con la
+    cola.
+  - *Excluir la región alineada del barajado.* 135 hosts benignos con E ≤ 1, de ~18,5
+    esperados. Al quitarle a cualquier host su mejor región, su modelo de azar se queda
+    sin los símbolos con los que se forma la puntuación, y todo parece significativo.
 - **Esto demuestra que el mecanismo funciona, no que funcione en tu red.** Los datos los
   genera el propio proyecto, con el mismo alfabeto que luego los busca, y la actividad
   benigna sintética es más aleatoria que la real.
@@ -216,12 +229,10 @@ conocidas y para priorizar.
 - **La matriz de puntuación es a mano:** rareza del símbolo más una regla por tácticas. La
   idea de fondo es aprenderla de cadenas reales, como se aprendió BLOSUM de bloques de
   proteínas.
-- **Barajar destruye la estructura temporal** (la actividad real llega en ráfagas).
-  - `--block N` baraja por bloques y conserva algo de esa estructura.
-  - Pero también conserva trozos de la propia cadena dentro del modelo nulo, que entonces
-    la penaliza. En la demo, `--block 3` sube el E de la cadena exacta de 7·10⁻⁶ a 0,07.
-  - Un modelo nulo que excluya la región alineada, o que tome como referencia hosts
-    parecidos, está en la hoja de ruta.
+- **Barajar destruye parte de la estructura temporal.** Los bloques de 3 conservan las
+  ráfagas cortas. Si la actividad real tiene una estructura más larga, el modelo de azar
+  será demasiado aleatorio y los E-values saldrán optimistas. Hay que medirlo con datos
+  reales. Usar hosts parecidos como referencia está en la hoja de ruta.
 - **Los tramos usan un hueco de tiempo fijo.** Una cadena lenta, con horas entre pasos, se
   corta (`--max-gap` lo ajusta). Además, el alineamiento no usa los tiempos dentro de un
   tramo.
@@ -244,8 +255,8 @@ conocidas y para priorizar.
 1. Probar el alfabeto con datos públicos de ataques simulados (p. ej. Security Datasets de
    OTRF): ¿se alinean dos ejecuciones del mismo escenario mejor que con el ruido?
 2. Aprender la matriz de sustitución de cadenas reales.
-3. Calibración con telemetría real, y decidir el modelo nulo: cola o Gumbel; barajado
-   excluyendo la región alineada; hosts parecidos como referencia.
+3. Calibración con telemetría real, y decidir el modelo nulo: cola o Gumbel, tamaño de
+   bloque, hosts parecidos como referencia.
 4. Más fuentes de entrada: ficheros EVTX directamente y salidas NDJSON de EDR abiertos.
 5. Índice de semillas (k-mers) para volúmenes grandes.
 6. Huecos que dependan del tiempo, y cadenas entre hosts.

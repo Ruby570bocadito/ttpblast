@@ -175,9 +175,14 @@ pub fn run(opts: &Options) -> Result<(), String> {
         scoring.gap_extend
     );
     println!(
-        "Significación {} barajados por host (bloques de {}) · {} · E = p × {} hosts\n",
+        "Significación {} barajados por host (bloques de {}{}) · {} · E = p × {} hosts\n",
         opts.shuffles,
         opts.block,
+        if opts.block > 1 {
+            ", la región alineada símbolo a símbolo"
+        } else {
+            ""
+        },
         match opts.null_model {
             NullModel::Tail => "cola exponencial",
             NullModel::Gumbel => "ajuste Gumbel",
@@ -236,9 +241,10 @@ fn evaluate<'a>(
         // so a host that runs discovery commands all day is not surprising.
         let mut rng = Rng::new(opts.seed ^ rng::fnv1a(&seq.host));
         // Shuffled symbols, cut into stretches of the same lengths as the real ones.
+        let hit = alignment.as_ref().map(|a| a.host_span());
         let null: Vec<i32> = (0..opts.shuffles)
             .map(|_| {
-                let symbols = shuffled(&seq.symbols, opts.block, &mut rng);
+                let symbols = shuffled(&seq.symbols, opts.block, hit, &mut rng);
                 segments
                     .iter()
                     .map(|range| align::best_score(query, &symbols[range.clone()], scoring))
@@ -289,9 +295,28 @@ fn evaluate<'a>(
 }
 
 /// Shuffles the sequence in blocks of `block` symbols. Blocks bigger than one
-/// keep some of the local order (bursts of routine activity) in the null model.
-fn shuffled(symbols: &[usize], block: usize, rng: &mut Rng) -> Vec<usize> {
-    let mut chunks: Vec<&[usize]> = symbols.chunks(block.max(1)).collect();
+/// keep some of the local order (bursts of routine activity) in the null model,
+/// but they would also keep pieces of a real chain together. `hit`, the host
+/// span of the best alignment, is therefore shuffled symbol by symbol: the
+/// composition stays the same and the chain's own order is broken. (Leaving
+/// the span out altogether was tried and makes every host look significant,
+/// because the null loses the very symbols its score is made of.)
+fn shuffled(
+    symbols: &[usize],
+    block: usize,
+    hit: Option<(usize, usize)>,
+    rng: &mut Rng,
+) -> Vec<usize> {
+    let block = block.max(1);
+    let mut chunks: Vec<&[usize]> = match hit {
+        Some((first, last)) if block > 1 => {
+            let mut chunks: Vec<&[usize]> = symbols[..first].chunks(block).collect();
+            chunks.extend(symbols[first..=last].chunks(1));
+            chunks.extend(symbols[last + 1..].chunks(block));
+            chunks
+        }
+        _ => symbols.chunks(block).collect(),
+    };
     rng.shuffle(&mut chunks);
     chunks.concat()
 }
@@ -664,11 +689,27 @@ mod tests {
     }
 
     #[test]
+    fn hit_is_shuffled_symbol_by_symbol() {
+        // With one block as big as the sequence, only the hit's symbols move.
+        let symbols: Vec<usize> = (0..12).collect();
+        let mut moved = false;
+        for seed in 0..20 {
+            let out = shuffled(&symbols, 100, Some((4, 7)), &mut Rng::new(seed));
+            let pos = |x: usize| out.iter().position(|&y| y == x).unwrap();
+            // Outside the hit, each block stays in one piece and in order.
+            assert!(pos(1) == pos(0) + 1 && pos(3) == pos(0) + 3);
+            assert!(pos(9) == pos(8) + 1 && pos(11) == pos(8) + 3);
+            moved |= (4..=7).any(|x| pos(x) != x);
+        }
+        assert!(moved);
+    }
+
+    #[test]
     fn block_shuffle_keeps_composition() {
         let mut rng = Rng::new(5);
         let symbols: Vec<usize> = (0..23).map(|i| i % 7).collect();
-        for block in [1, 3, 50] {
-            let mut a = shuffled(&symbols, block, &mut rng);
+        for (block, hit) in [(1, None), (3, None), (50, None), (3, Some((4, 9)))] {
+            let mut a = shuffled(&symbols, block, hit, &mut rng);
             let mut b = symbols.clone();
             a.sort_unstable();
             b.sort_unstable();

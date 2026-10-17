@@ -26,7 +26,8 @@ Uso:
 Opciones de search:
   --alphabet FICHERO   alfabeto JSON (por defecto, el incluido)
   --shuffles N         secuencias barajadas por host para calibrar (200)
-  --block N            barajar en bloques de N símbolos (1)
+  --block N            barajar en bloques de N símbolos; la región del mejor
+                       alineamiento se baraja siempre símbolo a símbolo (3)
   --null MODELO        modelo de las puntuaciones al azar: cola (exponencial,
                        como Karlin-Altschul) o gumbel (cola)
   --seed N             semilla del barajado (1)
@@ -78,7 +79,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 events: flags.required("events")?.to_string(),
                 alphabet: flags.text("alphabet").map(str::to_string),
                 shuffles: flags.number("shuffles", 200)?,
-                block: flags.number("block", 1)?,
+                block: flags.number("block", 3)?,
                 seed: flags.number("seed", 1)?,
                 max_evalue: flags.number("evalue", 10.0)?,
                 max_hits: flags.number("max-hits", 10)?,

@@ -24,10 +24,10 @@ ATTACK_HOSTS = {"ws-legal-02": "exacta", "ws-finance-04": "variante", "ws-sales-
 ROW = re.compile(r"\s+(\d+)\s+(\S+)\s+(-?\d+)\s+(\S+)\s+\d+/\d+")
 
 
-def search(binary, events, query, null_model):
+def search(binary, events, query, null_model, extra):
     out = subprocess.run(
         [binary, "search", "--query", query, "--events", events, "--null", null_model,
-         "--evalue", "1e12", "--max-hits", "1000", "--details", "0", "--no-baseline"],
+         "--evalue", "1e12", "--max-hits", "1000", "--details", "0", "--no-baseline", *extra],
         check=True, capture_output=True, text=True,
     ).stdout
     for line in out.splitlines():
@@ -42,7 +42,10 @@ def main():
     parser.add_argument("--bin", default="target/release/ttpblast")
     parser.add_argument("--query", default="queries/phishing-lateral.txt")
     parser.add_argument("--work", default="data/calibracion")
+    parser.add_argument("--extra", default="",
+                        help='opciones extra para "ttpblast search", p. ej. "--block 3 --exclude-hit"')
     args = parser.parse_args()
+    extra = args.extra.split()
 
     models = ("cola", "gumbel")
     stats = {m: {"benign": 0, "le1": 0, "le01": 0, "attack": {}} for m in models}
@@ -52,7 +55,7 @@ def main():
                        check=True, capture_output=True)
         for model in models:
             s = stats[model]
-            for rank, host, evalue in search(args.bin, str(out_dir / "events.ndjson"), args.query, model):
+            for rank, host, evalue in search(args.bin, str(out_dir / "events.ndjson"), args.query, model, extra):
                 if host in ATTACK_HOSTS:
                     s["attack"].setdefault(ATTACK_HOSTS[host], []).append((evalue, rank))
                 else:
@@ -61,7 +64,7 @@ def main():
                     s["le01"] += evalue <= 0.1
 
     n = args.seeds
-    print(f"{n} conjuntos sintéticos · 40 hosts cada uno (37 benignos)\n")
+    print(f"{n} conjuntos sintéticos · 40 hosts cada uno (37 benignos) · opciones: {args.extra or '(ninguna)'}\n")
     for model in models:
         s = stats[model]
         print(f"Modelo nulo: {model}")
