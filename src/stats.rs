@@ -10,7 +10,8 @@
 //! shuffle contains scores the same however it is shuffled), which the full
 //! Gumbel does not describe; the tail fit ignores the bulk.
 
-const EULER_GAMMA: f64 = 0.577_215_664_901_532_9;
+use std::f64::consts::EULER_GAMMA;
+
 /// Below this spread the null scores are basically a single value and a
 /// Gumbel fit means nothing; fall back to the empirical p-value.
 const MIN_SD: f64 = 0.5;
