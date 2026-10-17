@@ -210,6 +210,16 @@ E ≤ 1 y ~1,9 con E ≤ 0,1.
   - *Excluir la región alineada del barajado.* 135 hosts benignos con E ≤ 1, de ~18,5
     esperados. Al quitarle a cualquier host su mejor región, su modelo de azar se queda
     sin los símbolos con los que se forma la puntuación, y todo parece significativo.
+- **En Windows real.** El flujo [`Sysmon lab`](.github/workflows/sysmon-lab.yml) instala
+  Sysmon en una máquina Windows desechable de GitHub con los comandos de este README. Genera
+  actividad benigna (compilar, `whoami`, `hostname`, `systeminfo`, `schtasks`, una descarga
+  desde PowerShell), exporta con el script y analiza.
+  - Primera ejecución: 46 eventos, 6 con símbolo (`PSH ACD SID SID TSK C2W`), justo los
+    comandos lanzados.
+  - El mejor parecido con la cadena tuvo E = 0,54: ninguna falsa alarma, aunque esos
+    comandos se parecen al descubrimiento de una intrusión.
+  - Comprueba la cadena de Sysmon de principio a fin. No mide la calibración: son unos
+    minutos de actividad de una máquina de compilación.
 - **Esto demuestra que el mecanismo funciona, no que funcione en tu red.** Los datos los
   genera el propio proyecto, con el mismo alfabeto que luego los busca, y la actividad
   benigna sintética es más aleatoria que la real.
