@@ -6,6 +6,7 @@ mod search;
 mod sequence;
 mod stats;
 mod synth;
+mod sysmon;
 mod time;
 
 use std::collections::HashMap;

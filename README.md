@@ -84,6 +84,49 @@ ttpblast alphabet                                  # símbolos disponibles
 ttpblast --help                                    # todas las opciones
 ```
 
+## Con tu propia telemetría (Windows + Sysmon)
+
+[Sysmon](https://learn.microsoft.com/es-es/sysinternals/downloads/sysmon) es una
+herramienta gratuita de Microsoft Sysinternals que registra lo que pasa en el equipo
+(procesos, conexiones, ficheros, registro). La versión actual funciona en Windows 11 o
+posterior y en Windows Server 2019 o posterior.
+
+En una PowerShell abierta **como administrador**, instálalo con la configuración de
+[SwiftOnSecurity](https://github.com/SwiftOnSecurity/sysmon-config):
+
+```powershell
+$ProgressPreference = 'SilentlyContinue'
+New-Item -ItemType Directory -Force C:\Tools\Sysmon | Out-Null
+Invoke-WebRequest https://download.sysinternals.com/files/Sysmon.zip -OutFile C:\Tools\Sysmon\Sysmon.zip
+Expand-Archive C:\Tools\Sysmon\Sysmon.zip -DestinationPath C:\Tools\Sysmon -Force
+Invoke-WebRequest https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml -OutFile C:\Tools\Sysmon\sysmonconfig.xml
+C:\Tools\Sysmon\Sysmon64.exe -accepteula -i C:\Tools\Sysmon\sysmonconfig.xml
+```
+
+Usa el equipo con normalidad unos días. Después, desde la carpeta de `ttpblast` (y también
+como administrador):
+
+```powershell
+cargo build --release
+powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
+.\target\release\ttpblast.exe encode --events data\sysmon\events.ndjson
+.\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson
+```
+
+- **Privacidad.** [`scripts/export-sysmon.ps1`](scripts/export-sysmon.ps1) solo exporta
+  rutas de procesos, ficheros y claves de registro, y destinos de red. No exporta líneas
+  de comandos, usuarios ni hashes. El resultado queda en `data\`, que git ignora.
+- **Qué esperar.** En un equipo limpio, lo normal es que ningún resultado tenga un E-value
+  pequeño. Si alguno lo tiene, es una falsa alarma que merece la pena mirar: es justo lo que
+  hay que medir.
+- **Un solo equipo.** Con un único host, `E = p`.
+- **Accesos a procesos.** La configuración de SwiftOnSecurity no registra accesos a otros
+  procesos (evento 10), así que el paso `LSA` nunca aparecerá.
+- **Conexiones.** Solo se traducen las conexiones salientes.
+- **Espacio.** Sysmon escribe en el registro de eventos, que tiene un tamaño máximo; si se
+  llena, se pierden los eventos más antiguos.
+- **Desinstalar.** `C:\Tools\Sysmon\Sysmon64.exe -u`.
+
 ## Cómo funciona
 
 1. **Alfabeto.** Cada evento relevante se convierte en un símbolo, una técnica de MITRE
@@ -189,7 +232,8 @@ conocidas y para priorizar.
 - **Formato de entrada.** NDJSON con campos al estilo ECS (`host.name`, `@timestamp`,
   `process.name`, `process.parent.name`, `destination.port`, `file.path`,
   `registry.path`). El acceso a procesos usa `process.target.name`, que no es estándar.
-  Para Sysmon/EVTX u otras fuentes hace falta mapear campos o escribir un adaptador.
+  Los eventos de Sysmon (exportados con el script o enviados por Winlogbeat) se traducen
+  solos. Otras fuentes necesitan mapear campos o un adaptador.
 - **Adversario adaptativo.** Quien conozca el método puede rellenar la cadena con pasos
   benignos o espaciarla en el tiempo. Hay que medir cuánto le cuesta.
 
@@ -200,7 +244,7 @@ conocidas y para priorizar.
 2. Aprender la matriz de sustitución de cadenas reales.
 3. Calibración con telemetría real, y decidir el modelo nulo: cola o Gumbel; barajado
    excluyendo la región alineada; hosts parecidos como referencia.
-4. Adaptadores de entrada (Sysmon/EVTX, salidas NDJSON de EDR abiertos).
+4. Más fuentes de entrada: ficheros EVTX directamente y salidas NDJSON de EDR abiertos.
 5. Índice de semillas (k-mers) para volúmenes grandes.
 6. Huecos que dependan del tiempo, y cadenas entre hosts.
 7. Medir el coste de evasión: cuántos pasos de relleno o cuánto tiempo hacen falta para
@@ -224,4 +268,6 @@ No contienen código ni muestras de malware.
 
 ## Licencia
 
-Pendiente de elegir.
+A tu elección, [MIT](LICENSE-MIT) o [Apache-2.0](LICENSE-APACHE), como es habitual en Rust.
+Salvo que digas lo contrario, cualquier contribución que envíes para incluirla en el
+proyecto se licencia de esa misma doble forma, sin condiciones adicionales.

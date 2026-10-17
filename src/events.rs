@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader};
 
 use serde_json::Value;
 
-use crate::time;
+use crate::{sysmon, time};
 
 const HOST_KEYS: [&str; 3] = ["host.name", "host.hostname", "agent.hostname"];
 const TIME_KEYS: [&str; 2] = ["@timestamp", "timestamp"];
@@ -29,6 +29,7 @@ impl Event {
     pub fn from_json(value: &Value) -> Option<Event> {
         let mut fields = HashMap::new();
         flatten("", value, &mut fields);
+        sysmon::normalize(&mut fields);
         let host = HOST_KEYS.iter().find_map(|k| fields.get(*k))?.clone();
         let ts = TIME_KEYS
             .iter()
