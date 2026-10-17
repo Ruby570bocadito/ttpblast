@@ -116,8 +116,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
 - **Privacidad.** [`scripts/export-sysmon.ps1`](scripts/export-sysmon.ps1) solo exporta
   rutas de procesos, ficheros y claves de registro, y destinos de red. No exporta líneas
   de comandos, usuarios ni hashes. El resultado queda en `data\`, que git ignora.
-  Tampoco exporta sus propios eventos (la PowerShell con la que se ejecuta), para no
-  contaminar la medición.
+  Tampoco exporta los eventos de sus propias ejecuciones (la de ahora y las anteriores),
+  para no contaminar la medición.
 - **Qué esperar.** En un equipo limpio, lo normal es que ningún resultado tenga un E-value
   pequeño. Si alguno lo tiene, es una falsa alarma que merece la pena mirar: es justo lo que
   hay que medir.
