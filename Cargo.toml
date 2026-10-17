@@ -1,0 +1,12 @@
+[package]
+name = "ttpblast"
+version = "0.1.0"
+edition = "2024"
+description = "Búsqueda de cadenas de ataque en telemetría de endpoint por alineamiento local, al estilo BLAST"
+readme = "README.md"
+repository = "https://github.com/Ruby570bocadito/ttpblast"
+keywords = ["security", "threat-hunting", "detection", "alignment", "mitre-attack"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+serde_json = "1"
