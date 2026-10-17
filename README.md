@@ -1,5 +1,7 @@
 # ttpblast
 
+[![CI](https://github.com/Ruby570bocadito/ttpblast/actions/workflows/ci.yml/badge.svg)](https://github.com/Ruby570bocadito/ttpblast/actions/workflows/ci.yml) · [English](README.en.md)
+
 > BLAST para la telemetría de endpoint: busca **variantes** de una cadena de ataque conocida
 > en los eventos de tus máquinas y te dice, con un E-value, si el parecido es casualidad.
 
@@ -74,7 +76,9 @@ demo
 
 Necesita Rust (edición 2024; probado con 1.97), que se instala desde
 [rustup.rs](https://rustup.rs). En Windows, el instalador pide además las herramientas de
-compilación de C++ de Visual Studio. La única dependencia es `serde_json`.
+compilación de C++ de Visual Studio. La única dependencia es `serde_json`. Las versiones
+etiquetadas publican además binarios listos para usar en
+[Releases](https://github.com/Ruby570bocadito/ttpblast/releases).
 
 ```bash
 ttpblast synth --out data/demo                     # telemetría sintética + verdad (truth.json)
@@ -110,7 +114,7 @@ como administrador):
 ```powershell
 cargo build --release
 powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
-.\target\release\ttpblast.exe encode --events data\sysmon\events.ndjson
+.\target\release\ttpblast.exe encode --events data\sysmon\events.ndjson --unmatched 15
 .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson
 ```
 
@@ -216,7 +220,7 @@ E ≤ 1 y ~1,9 con E ≤ 0,1.
 |---|---|---|
 | Variantes (técnica sustituida, paso extra o que falta) | sí | no |
 | ¿Es raro este parecido en este host? | E-value por host | no lo dice |
-| Coste | alineamiento + 200 barajados por host (0,3 s en la demo) | muy bajo |
+| Coste | alineamiento + 200 barajados por host (0,2 s en la demo) | muy bajo |
 | Madurez | demo de investigación | herramientas maduras en producción |
 | Explicación | alineamiento paso a paso con sus eventos | eventos que coinciden |
 
