@@ -40,13 +40,18 @@ jobs:
       - name: Actividad benigna
         run: |
           cargo build --release
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           .\target\release\ttpblast.exe synth --out data\demo | Out-Null
+          # Output is read in full: cutting it short (Select-Object -First)
+          # leaves the command with a broken pipe and a non-zero exit code.
           whoami
           hostname
-          systeminfo | Select-Object -First 5
-          schtasks /query /fo LIST | Select-Object -First 5
+          systeminfo | Out-Null
+          schtasks /query /fo LIST | Out-Null
           Invoke-WebRequest https://example.com -UseBasicParsing | Out-Null
           Start-Sleep -Seconds 15
+          # Only the build decides whether this step failed.
+          exit 0
 
       - name: Exportar y analizar
         run: |
