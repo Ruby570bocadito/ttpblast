@@ -10,8 +10,24 @@ use serde_json::Value;
 
 use crate::{sysmon, time};
 
-const HOST_KEYS: [&str; 3] = ["host.name", "host.hostname", "agent.hostname"];
-const TIME_KEYS: [&str; 2] = ["@timestamp", "timestamp"];
+/// ECS first; then Winlogbeat 7 and 6, and flat Sysmon exports such as
+/// OTRF's Security Datasets. Keys keep their case: only values are lowercased.
+const HOST_KEYS: [&str; 6] = [
+    "host.name",
+    "host.hostname",
+    "agent.hostname",
+    "winlog.computer_name",
+    "computer_name",
+    "Hostname",
+];
+/// `UtcTime` is Sysmon's own field, for exports without `@timestamp`.
+const TIME_KEYS: [&str; 5] = [
+    "@timestamp",
+    "timestamp",
+    "UtcTime",
+    "winlog.event_data.UtcTime",
+    "event_data.UtcTime",
+];
 
 pub struct Event {
     pub ts: Option<i64>,
@@ -46,7 +62,8 @@ pub struct Loaded {
 }
 
 pub fn load_ndjson(path: &str) -> Result<Loaded, String> {
-    let file = File::open(path).map_err(|e| format!("no se puede abrir {path}: {e}"))?;
+    let file = File::open(path)
+        .map_err(|e| tr!("no se puede abrir {path}: {e}", "cannot open {path}: {e}"))?;
     let mut events = Vec::new();
     let mut skipped = 0;
     for (n, line) in BufReader::new(file).lines().enumerate() {

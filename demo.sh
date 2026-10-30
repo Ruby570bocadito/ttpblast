@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Demo completa: compila, genera telemetría sintética y busca la cadena de
-# ejemplo. Los argumentos extra van a `ttpblast search` (p. ej. --null gumbel).
+# Demo guiada: compila y ejecuta `ttpblast demo`, que genera telemetría
+# sintética, busca dos cadenas de ataque y se pone nota frente a la verdad.
+# Los argumentos extra van a la demo (p. ej. ./demo.sh --null gumbel, o
+# ./demo.sh --lang en).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 cargo build --release --quiet
-./target/release/ttpblast synth --out data/demo
-echo
-./target/release/ttpblast search \
-  --query queries/phishing-lateral.txt \
-  --events data/demo/events.ndjson "$@"
+./target/release/ttpblast demo "$@"

@@ -21,15 +21,22 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
-      - name: Demo de principio a fin
+      - name: Demo guiada de principio a fin
         shell: bash
         run: |
-          cargo run --release -- synth --out data/demo
-          cargo run --release -- search --query queries/phishing-lateral.txt --events data/demo/events.ndjson --details 1
+          cargo run --release -- demo --details 1
+          cargo run --release -- search --query queries/ransomware-preludio.txt --events data/demo/events.ndjson --details 0 --lang en
+      - name: Informes HTML de la demo
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: informes-demo
+          path: data/demo/*.html
+          retention-days: 14
       - name: demo.cmd (cmd.exe)
         if: runner.os == 'Windows'
         shell: cmd
-        run: demo.cmd --details 0
+        run: demo.cmd --details 0 --no-html
       - name: Sintaxis de export-sysmon.ps1 (Windows PowerShell 5.1)
         if: runner.os == 'Windows'
         shell: powershell

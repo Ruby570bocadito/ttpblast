@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>ttpblast</title>
+<style>
+:root {
+  --bg: #f6f5f1;
+  --panel: #ffffff;
+  --ink: #1b2229;
+  --muted: #5c6670;
+  --faint: #8d959c;
+  --line: #e3e2dc;
+  --brand: #0f766e;
+  --brand-soft: #d9f0ec;
+  --same: #15803d;
+  --same-soft: #dcf5e3;
+  --similar: #b45309;
+  --similar-soft: #fbefd5;
+  --different: #b91c1c;
+  --different-soft: #fbe1e1;
+  --alert: #c81e1e;
+  --warn: #b7791f;
+  --bar: #9aa7b3;
+  --shadow: 0 1px 2px rgba(20, 30, 40, .06), 0 4px 16px rgba(20, 30, 40, .05);
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1317;
+    --panel: #151c22;
+    --ink: #e4ebf1;
+    --muted: #9aa6b1;
+    --faint: #6b7781;
+    --line: #26313a;
+    --brand: #2dd4bf;
+    --brand-soft: rgba(45, 212, 191, .13);
+    --same: #4ade80;
+    --same-soft: rgba(74, 222, 128, .14);
+    --similar: #fbbf24;
+    --similar-soft: rgba(251, 191, 36, .14);
+    --different: #f87171;
+    --different-soft: rgba(248, 113, 113, .14);
+    --alert: #ff6b6b;
+    --warn: #f2b84b;
+    --bar: #5d6b78;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+}
+main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 64px; }
+h1, h2, h3 { line-height: 1.2; margin: 0; }
+h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 40px 0 12px; }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+
+/* Header */
+header.top { display: grid; grid-template-columns: auto 1fr; gap: 20px 28px; align-items: center; }
+.logo { font-family: var(--mono); font-size: 12px; line-height: 1.25; white-space: pre; color: var(--faint); user-select: none; }
+.logo .q { color: var(--brand); }
+.logo .s { color: var(--same); }
+.logo .m { color: var(--similar); }
+.title h1 { font-size: 26px; letter-spacing: -.01em; }
+.title h1 span { color: var(--brand); }
+.title p { margin: 4px 0 0; color: var(--muted); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 24px; }
+.fact { padding: 14px 16px; }
+.fact h3 { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+.fact .big { font-size: 15px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chip { font-family: var(--mono); font-size: 12px; padding: 2px 7px; border-radius: 5px; background: var(--brand-soft); color: var(--brand); border: 1px solid transparent; }
+.chip.host { background: transparent; border-color: var(--line); color: var(--ink); font-family: var(--sans); font-size: 13px; }
+.chip.host.strong { border-color: var(--alert); color: var(--alert); font-weight: 600; }
+.chip.host.weak { border-color: var(--warn); color: var(--warn); }
+
+/* Verdict */
+.verdict { margin-top: 28px; padding: 20px 22px; border-left: 4px solid var(--faint); }
+.verdict.strong { border-left-color: var(--alert); }
+.verdict.weak { border-left-color: var(--warn); }
+.verdict .headline { font-size: 21px; font-weight: 650; letter-spacing: -.01em; }
+.verdict.strong .headline { color: var(--alert); }
+.verdict ul { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
+.verdict li { display: grid; grid-template-columns: 1.2em minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.verdict li .dot { text-align: center; }
+.verdict li .what { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+
+/* Overview */
+.overview { padding: 6px 0; overflow-x: auto; }
+.overview table { width: 100%; border-collapse: collapse; min-width: 640px; }
+.overview th { font-size: 12px; font-weight: 600; color: var(--muted); text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.overview td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.overview tr:last-child td { border-bottom: 0; }
+.overview tbody tr { cursor: pointer; }
+.overview tbody tr:hover td { background: var(--brand-soft); }
+.overview .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.overview .rank { color: var(--faint); width: 2em; }
+.overview .hostname { font-weight: 600; white-space: nowrap; }
+.track { display: flex; align-items: center; gap: 2px; }
+.cell { width: 22px; height: 14px; border-radius: 3px; flex: none; border: 1px solid transparent; }
+.cell.identical { background: var(--same); }
+.cell.similar { background: var(--similar); }
+.cell.different { background: var(--different); }
+.cell.missing { border: 1px dashed var(--faint); }
+.cell.outside { background: var(--line); opacity: .55; }
+.extra { width: 3px; height: 18px; background: var(--faint); border-radius: 2px; flex: none; margin: 0 1px; }
+.signal { display: inline-block; height: 8px; border-radius: 4px; vertical-align: middle; margin-right: 8px; }
+.e-strong { color: var(--alert); font-weight: 650; }
+.e-weak { color: var(--warn); font-weight: 600; }
+.e-quiet { color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--muted); padding: 10px 12px 4px; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+
+/* Hit details */
+.hit { margin-top: 14px; }
+.hit > summary { list-style: none; cursor: pointer; padding: 16px 20px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.hit > summary::-webkit-details-marker { display: none; }
+.hit > summary::before { content: "▸"; color: var(--faint); transition: transform .15s; display: inline-block; }
+.hit[open] > summary::before { transform: rotate(90deg); }
+.hit > summary .host { font-size: 18px; font-weight: 650; }
+.hit .body { padding: 0 20px 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+.hit h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.aln { overflow-x: auto; padding-bottom: 4px; }
+.aln-grid { display: grid; grid-auto-flow: column; grid-template-rows: auto 18px auto; gap: 2px 4px; justify-content: start; align-items: center; }
+.aln-label { font-size: 11px; color: var(--muted); padding-right: 6px; text-transform: uppercase; letter-spacing: .05em; }
+.tile { font-family: var(--mono); font-size: 13px; padding: 5px 0; width: 46px; text-align: center; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
+.tile.q { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 35%, transparent); background: var(--brand-soft); }
+.tile.identical { background: var(--same-soft); color: var(--same); border-color: color-mix(in srgb, var(--same) 40%, transparent); }
+.tile.similar { background: var(--similar-soft); color: var(--similar); border-color: color-mix(in srgb, var(--similar) 40%, transparent); }
+.tile.different { background: var(--different-soft); color: var(--different); border-color: color-mix(in srgb, var(--different) 40%, transparent); }
+.tile.gap { color: var(--faint); border-style: dashed; background: transparent; }
+.mark { text-align: center; font-family: var(--mono); font-weight: 700; }
+.mark.identical { color: var(--same); }
+.mark.similar { color: var(--similar); }
+.two { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 22px; }
+.chart svg { width: 100%; height: auto; display: block; }
+.chart p { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); }
+.evidence { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.evidence td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.evidence td:first-child { padding-left: 0; }
+.evidence .t { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+.evidence .ev { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+.badge { font-size: 12px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.badge.identical { background: var(--same-soft); color: var(--same); }
+.badge.similar { background: var(--similar-soft); color: var(--similar); }
+.badge.different { background: var(--different-soft); color: var(--different); }
+.badge.extra, .badge.missing { background: transparent; color: var(--faint); border: 1px dashed var(--faint); }
+.svg-text { font: 11px var(--sans); fill: var(--muted); }
+.svg-mono { font: 11px var(--mono); }
+
+.baseline { padding: 16px 20px; }
+.howto { padding: 4px 20px; }
+.howto summary { cursor: pointer; padding: 12px 0; font-weight: 600; }
+.howto dl { margin: 0 0 16px; }
+.howto dt { font-weight: 600; margin-top: 12px; }
+.howto dd { margin: 2px 0 0; color: var(--muted); }
+footer { margin-top: 40px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; align-items: center; }
+footer a, .howto a { color: var(--brand); }
+button.dl { font: inherit; font-size: 13px; color: var(--brand); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+button.dl:hover { border-color: var(--brand); }
+.empty { padding: 18px 20px; color: var(--muted); }
+
+@media (max-width: 760px) {
+  header.top { grid-template-columns: 1fr; }
+  .two { grid-template-columns: 1fr; }
+  main { padding: 18px 16px 48px; }
+}
+@media print {
+  :root { --bg: #fff; --shadow: none; }
+  .hit { break-inside: avoid; }
+  button.dl { display: none; }
+  .overview tbody tr:hover td { background: none; }
+}
+</style>
+</head>
+<body>
+<main id="app">
+  <noscript><p>Este informe necesita JavaScript para dibujarse. This report needs JavaScript to render.</p></noscript>
+</main>
+<script type="application/json" id="ttpblast-data">"@TTPBLAST_DATA@"</script>
+<script>
+"use strict";
+(function () {
+  const DATA = JSON.parse(document.getElementById("ttpblast-data").textContent);
+  const L = DATA.lang === "en" ? "en" : "es";
+  document.documentElement.lang = L;
+
+  const TEXT = {
+    es: {
+      title: "Informe de búsqueda",
+      subtitle: "Alineamiento local de cadenas de ataque, al estilo BLAST",
+      query: "Consulta", telemetry: "Telemetría", method: "Método",
+      steps: (n) => n === 1 ? "1 paso" : `${n} pasos`,
+      events: "eventos", hosts: "hosts", encoded: "con símbolo", stretches: "tramos de actividad",
+      shuffles: (n, b) => `${n} barajados por host${b > 1 ? `, en bloques de ${b}` : ""}`,
+      model: { tail: "cola exponencial (Karlin-Altschul)", gumbel: "ajuste Gumbel", empirical: "p empírico" },
+      evalueIs: "E = p × hosts buscados",
+      verdict: "Veredicto",
+      strongHead: (n) => n === 1 ? "1 host muy por encima del azar" : `${n} hosts muy por encima del azar`,
+      weakHead: (n) => n === 1 ? "1 host a revisar" : `${n} hosts a revisar`,
+      noneHead: "Ningún host se aleja del azar",
+      strongLine: "E ≤ 0,01: casi imposible por azar en tantos hosts.",
+      weakLine: "E ≤ 1: merece una segunda mirada.",
+      rest: (n, h, e) => `El resto (${n}) no se distingue del azar: el mejor, ${h}, tiene E = ${e}.`,
+      restNothing: (n) => `El resto (${n}) no tiene nada parecido a la consulta.`,
+      noneLine: (h, e) => `El mejor, ${h}, tiene E = ${e}. En equipos sin intrusiones es lo esperable.`,
+      exact: (hs) => hs.length === 0 ? "La búsqueda exacta no encuentra nada." : `La búsqueda exacta encuentra ${hs.length === 1 ? "1 host" : hs.length + " hosts"}:`,
+      overview: "Vista general",
+      cols: ["#", "host", "alineamiento con la consulta", "E-value", "punt.", "duración"],
+      legend: { identical: "idéntico", similar: "misma táctica", different: "otra táctica", missing: "falta", outside: "fuera del alineamiento", extra: "pasos extra" },
+      noHits: (e) => `Ningún resultado con E ≤ ${e}.`,
+      details: "Resultados en detalle",
+      score: "puntuación", alignment: "Alineamiento", chance: "Esta cadena frente al azar", evidence: "Las pruebas", timeline: "Cronología",
+      rowQuery: "consulta", rowHost: "host",
+      chanceText: (n, max, s, p, e) => `En ${n} barajados del propio host, la mejor puntuación fue ${max}; esta cadena puntúa ${s}. P(S ≥ ${s}) ≈ ${p}, así que E = ${e}.`,
+      chanceInside: (n, s, p, e) => `En ${n} barajados del propio host, puntuaciones como ${s} aparecen con frecuencia: P(S ≥ ${s}) ≈ ${p}, E = ${e}.`,
+      axisY: "barajados con esa puntuación (escala log)", axisX: "puntuación", modelLine: "lo que predice el modelo", thisChain: "esta cadena",
+      misfitBad: "⚠ ajuste dudoso: la cola no parece exponencial; E-values muy pequeños, con cautela.",
+      rel: { identical: "idéntico", similar: "similar a", different: "distinto de", extra: "paso extra", missing: "falta" },
+      stepN: (n) => `paso ${n}`, extraStep: "extra", notSeen: "no aparece en el host",
+      baseline: "Línea base: búsqueda exacta",
+      baselineText: (m) => `Todos los pasos, en orden, en ≤ ${m} min (como \`sequence … with maxspan\` de EQL).`,
+      baselineNone: "No encuentra ningún host.",
+      howto: "Cómo leer este informe",
+      how: [
+        ["E-value", "Cuántos hosts esperarías ver con un parecido así de bueno por puro azar. E = 2·10⁻⁶ es «casi imposible»; E = 3 es «lo normal en 3 hosts». Es el mismo número que da BLAST para el ADN."],
+        ["Cada host contra sí mismo", "El azar de cada host se mide barajando sus propios símbolos. Un administrador hace descubrimiento todo el día, así que sus parecidos parciales no sorprenden; en un portátil de ventas, sí."],
+        ["Alineamiento", "Idéntico (verde): el mismo paso. Misma táctica (ámbar): una técnica sustituida por otra parecida, como cmd por PowerShell. Huecos: pasos de más en el host o que faltan."],
+        ["Límites", "Demo de investigación: la matriz de puntuación es inicial y la calibración solo se ha medido con telemetría sintética. Un E-value pequeño es un motivo para mirar, no un veredicto final."]
+      ],
+      more: "Más en el repositorio",
+      generated: (v) => `Generado por ttpblast ${v}. Todo está en este fichero: sin conexiones externas.`,
+      download: "Descargar los datos (JSON)",
+      settings: "Ajustes", minutes: "min", hours: "h"
+    },
+    en: {
+      title: "Search report",
+      subtitle: "Local alignment of attack chains, BLAST-style",
+      query: "Query", telemetry: "Telemetry", method: "Method",
+      steps: (n) => n === 1 ? "1 step" : `${n} steps`,
+      events: "events", hosts: "hosts", encoded: "with a symbol", stretches: "stretches of activity",
+      shuffles: (n, b) => `${n} shuffles per host${b > 1 ? `, in blocks of ${b}` : ""}`,
+      model: { tail: "exponential tail (Karlin-Altschul)", gumbel: "Gumbel fit", empirical: "empirical p" },
+      evalueIs: "E = p × hosts searched",
+      verdict: "Verdict",
+      strongHead: (n) => n === 1 ? "1 host far beyond chance" : `${n} hosts far beyond chance`,
+      weakHead: (n) => n === 1 ? "1 host worth a second look" : `${n} hosts worth a second look`,
+      noneHead: "No host stands out from chance",
+      strongLine: "E ≤ 0.01: nearly impossible by chance across this many hosts.",
+      weakLine: "E ≤ 1: worth a second look.",
+      rest: (n, h, e) => `The rest (${n}) is indistinguishable from chance: the best, ${h}, has E = ${e}.`,
+      restNothing: (n) => `The rest (${n}) has nothing resembling the query.`,
+      noneLine: (h, e) => `The best, ${h}, has E = ${e}. On machines without intrusions, that is what to expect.`,
+      exact: (hs) => hs.length === 0 ? "The exact search finds nothing." : `The exact search finds ${hs.length === 1 ? "1 host" : hs.length + " hosts"}:`,
+      overview: "Overview",
+      cols: ["#", "host", "alignment with the query", "E-value", "score", "duration"],
+      legend: { identical: "identical", similar: "same tactic", different: "other tactic", missing: "missing", outside: "outside the alignment", extra: "extra steps" },
+      noHits: (e) => `No hit with E ≤ ${e}.`,
+      details: "Hits in detail",
+      score: "score", alignment: "Alignment", chance: "This chain against chance", evidence: "The evidence", timeline: "Timeline",
+      rowQuery: "query", rowHost: "host",
+      chanceText: (n, max, s, p, e) => `In ${n} shuffles of the host itself, the best score was ${max}; this chain scores ${s}. P(S ≥ ${s}) ≈ ${p}, so E = ${e}.`,
+      chanceInside: (n, s, p, e) => `In ${n} shuffles of the host itself, scores like ${s} are common: P(S ≥ ${s}) ≈ ${p}, E = ${e}.`,
+      axisY: "shuffles with that score (log scale)", axisX: "score", modelLine: "what the model predicts", thisChain: "this chain",
+      misfitBad: "⚠ doubtful fit: the tail does not look exponential; read very small E-values with care.",
+      rel: { identical: "identical", similar: "similar to", different: "unlike", extra: "extra step", missing: "missing" },
+      stepN: (n) => `step ${n}`, extraStep: "extra", notSeen: "not seen on the host",
+      baseline: "Baseline: exact search",
+      baselineText: (m) => `Every step, in order, within ${m} min (like EQL's \`sequence … with maxspan\`).`,
+      baselineNone: "It finds no host.",
+      howto: "How to read this report",
+      how: [
+        ["E-value", "How many hosts you would expect to see with a resemblance this good by pure chance. E = 2·10⁻⁶ is \"nearly impossible\"; E = 3 is \"normal on 3 hosts\". It is the same number BLAST gives for DNA."],
+        ["Each host against itself", "Each host's chance is measured by shuffling its own symbols. An admin runs discovery all day, so their partial resemblances are no surprise; on a sales laptop, they are."],
+        ["Alignment", "Identical (green): the same step. Same tactic (amber): a technique swapped for a similar one, like cmd for PowerShell. Gaps: extra steps on the host, or missing ones."],
+        ["Limits", "Research demo: the scoring matrix is a first version and calibration has only been measured on synthetic telemetry. A small E-value is a reason to look, not a final verdict."]
+      ],
+      more: "More in the repository",
+      generated: (v) => `Generated by ttpblast ${v}. Everything is in this file: no external connections.`,
+      download: "Download the data (JSON)",
+      settings: "Settings", minutes: "min", hours: "h"
+    }
+  }[L];
+
+  // ------------------------------------------------------------ helpers
+  // Data is only ever written with textContent: telemetry can contain anything.
+  function h(tag, attrs, ...children) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k === "onclick") el.addEventListener("click", v);
+      else el.setAttribute(k, String(v));
+    }
+    for (const c of children.flat(Infinity)) {
+      if (c === null || c === undefined || c === false) continue;
+      el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    }
+    return el;
+  }
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function s(tag, attrs, ...children) {
+    const el = document.createElementNS(SVGNS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, String(v));
+    for (const c of children.flat(Infinity)) {
+      if (c === null || c === undefined) continue;
+      el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    }
+    return el;
+  }
+  const group = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, L === "es" ? "." : ",");
+  const dec = (x, d) => { const t = x.toFixed(d); return L === "es" ? t.replace(".", ",") : t; };
+  const SUP = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "-": "⁻" };
+  function sci(x) {
+    if (x >= 10) return x.toFixed(0);
+    if (x >= 0.01) return dec(x, 2);
+    if (x <= 0) return "0";
+    const [m, e] = x.toExponential(1).split("e");
+    const exp = String(parseInt(e, 10)).split("").map((c) => SUP[c] || c).join("");
+    return `${L === "es" ? m.replace(".", ",") : m} × 10${exp}`;
+  }
+  const tier = (e) => e <= DATA.summary.strong_threshold ? "strong" : e <= DATA.summary.weak_threshold ? "weak" : "quiet";
+  const minutes = (a, b) => {
+    if (!a || !b) return "—";
+    const secs = (Date.parse(b) - Date.parse(a)) / 1000;
+    return secs < 3600 ? `${Math.round(secs / 60)} ${TEXT.minutes}` : `${dec(secs / 3600, 1)} ${TEXT.hours}`;
+  };
+  const clock = (iso) => iso ? iso.slice(11, 19) : "--:--:--";
+  const day = (iso) => iso ? `${iso.slice(0, 10)} ${iso.slice(11, 19)}` : "";
+  const symbolTitle = (st) => [st.technique, st.name, st.tactic].filter(Boolean).join(" · ");
+
+  // Where each query step ended up in a hit: identical, similar, different,
+  // missing or outside the local alignment, and how many extra host steps
+  // came after it.
+  function track(hit) {
+    const n = DATA.query.steps.length;
+    const cells = Array.from({ length: n }, () => ({ kind: "outside", extras: 0 }));
+    let last = -1;
+    let before = 0;
+    for (const st of hit.alignment) {
+      if (st.kind === "extra") {
+        if (last >= 0) cells[last].extras += 1; else before += 1;
+        continue;
+      }
+      const q = st.query_step - 1;
+      cells[q] = { kind: st.kind === "missing" ? "missing" : st.relation, extras: 0, step: st };
+      last = q;
+    }
+    return { cells, before };
+  }
+
+  // ------------------------------------------------------------ header
+  const app = document.getElementById("app");
+  const q = DATA.query;
+  const tel = DATA.telemetry;
+  const set = DATA.settings;
+  document.title = `ttpblast · ${q.file}`;
+
+  const logoRows = [["UEX", "PSH", "C2W", "ITT", "RUN"], ["UEX", "CMD", "C2W", "ITT", "TSK"]];
+  const logo = h("div", { class: "logo", "aria-hidden": "true" },
+    ...logoRows[0].flatMap((c) => [h("span", { class: "q" }, c), " "]), "\n",
+    ...logoRows[0].flatMap((c, i) => [h("span", { class: c === logoRows[1][i] ? "s" : "m" }, c === logoRows[1][i] ? " | " : " + "), " "]), "\n",
+    ...logoRows[1].flatMap((c, i) => [h("span", { class: c === logoRows[0][i] ? "s" : "m" }, c), " "]));
+
+  app.append(h("header", { class: "top" },
+    logo,
+    h("div", { class: "title" },
+      h("h1", {}, h("span", {}, "ttpblast"), " · ", TEXT.title),
+      h("p", {}, TEXT.subtitle))));
+
+  const queryChips = h("div", { class: "chips" },
+    q.symbols.map((sym) => h("span", { class: "chip", title: symbolTitle(sym) }, sym.code)));
+  app.append(h("section", { class: "facts" },
+    h("div", { class: "fact panel" },
+      h("h3", {}, TEXT.query),
+      h("div", { class: "big mono" }, q.file),
+      h("div", { class: "muted" }, TEXT.steps(q.steps.length)),
+      queryChips),
+    h("div", { class: "fact panel" },
+      h("h3", {}, TEXT.telemetry),
+      h("div", { class: "big mono" }, tel.file),
+      h("div", { class: "muted" }, `${group(tel.events)} ${TEXT.events} · ${group(tel.hosts)} ${TEXT.hosts}`),
+      h("div", { class: "muted" }, `${group(tel.encoded_events)} ${TEXT.encoded} (${dec(100 * tel.encoded_events / Math.max(tel.events, 1), 1)} %) · ${group(tel.stretches)} ${TEXT.stretches}`)),
+    h("div", { class: "fact panel" },
+      h("h3", {}, TEXT.method),
+      h("div", { class: "big" }, TEXT.shuffles(set.shuffles, set.block)),
+      h("div", { class: "muted" }, TEXT.model[set.null] || set.null),
+      h("div", { class: "muted" }, `${TEXT.evalueIs} (${group(tel.hosts_with_symbols)})`))));
+
+  // ------------------------------------------------------------ verdict
+  const sum = DATA.summary;
+  const hostChip = (name, kind) => h("span", { class: `chip host ${kind}` }, name);
+  const flagged = sum.strong.length + sum.weak.length;
+  const restCount = tel.hosts_with_symbols - flagged;
+  const verdictClass = sum.strong.length ? "strong" : sum.weak.length ? "weak" : "";
+  const items = [];
+  const line = (dot, dotClass, ...what) => h("li", {}, h("span", { class: `dot ${dotClass}` }, dot), h("div", { class: "what" }, what));
+  if (sum.strong.length) items.push(line("●", "e-strong", h("span", {}, TEXT.strongLine), sum.strong.map((n) => hostChip(n, "strong"))));
+  if (sum.weak.length) items.push(line("◐", "e-weak", h("span", {}, TEXT.weakLine), sum.weak.map((n) => hostChip(n, "weak"))));
+  const best = sum.best_of_the_rest;
+  if (flagged && best) items.push(line("○", "faint", h("span", { class: "muted" }, TEXT.rest(`${restCount} ${TEXT.hosts}`, best.host, sci(best.evalue)))));
+  else if (flagged && restCount > 0) items.push(line("○", "faint", h("span", { class: "muted" }, TEXT.restNothing(`${restCount} ${TEXT.hosts}`))));
+  else if (!flagged && best) items.push(line("○", "faint", h("span", { class: "muted" }, TEXT.noneLine(best.host, sci(best.evalue)))));
+  if (DATA.baseline) {
+    const hs = DATA.baseline.matches.map((m) => m.host);
+    items.push(line("◇", "faint", h("span", { class: "muted" }, TEXT.exact(hs)), hs.map((n) => hostChip(n, ""))));
+  }
+  const headline = sum.strong.length ? TEXT.strongHead(sum.strong.length) : sum.weak.length ? TEXT.weakHead(sum.weak.length) : TEXT.noneHead;
+  app.append(h("section", { class: `verdict panel ${verdictClass}`, "aria-label": TEXT.verdict },
+    h("div", { class: "headline" }, headline),
+    h("ul", {}, items)));
+
+  // ------------------------------------------------------------ overview
+  const hits = DATA.hits.filter(Boolean);
+  app.append(h("h2", {}, TEXT.overview));
+  if (!hits.length) {
+    app.append(h("div", { class: "panel empty" }, TEXT.noHits(sci(set.max_evalue))));
+  } else {
+    const maxSignal = Math.max(6, ...hits.map((x) => -Math.log10(Math.max(x.evalue, 1e-300))));
+    const rows = hits.map((hit) => {
+      const t = track(hit);
+      const cells = [];
+      for (let i = 0; i < t.before; i++) cells.push(h("span", { class: "extra" }));
+      t.cells.forEach((c, i) => {
+        const sym = q.symbols[i];
+        const what = c.kind === "outside" ? TEXT.legend.outside : c.kind === "missing" ? TEXT.legend.missing
+          : `${c.step.host} · ${TEXT.legend[c.kind]}`;
+        cells.push(h("span", { class: `cell ${c.kind}`, title: `${TEXT.stepN(i + 1)} · ${sym.code} → ${what}` }));
+        for (let k = 0; k < c.extras; k++) cells.push(h("span", { class: "extra", title: TEXT.legend.extra }));
+      });
+      const level = Math.max(0, -Math.log10(Math.max(hit.evalue, 1e-300)));
+      const tr = tier(hit.evalue);
+      const color = tr === "strong" ? "var(--alert)" : tr === "weak" ? "var(--warn)" : "var(--bar)";
+      return h("tr", { onclick: () => { const d = document.getElementById(`hit-${hit.rank}`); d.open = true; d.scrollIntoView({ behavior: "smooth", block: "start" }); } },
+        h("td", { class: "rank num" }, hit.rank),
+        h("td", { class: "hostname" }, hit.host),
+        h("td", {}, h("div", { class: "track" }, cells)),
+        h("td", { class: "num" },
+          h("span", { class: "signal", style: `width:${Math.round(4 + 70 * level / maxSignal)}px;background:${color}` }),
+          h("span", { class: `e-${tr}` }, sci(hit.evalue))),
+        h("td", { class: "num" }, hit.score),
+        h("td", { class: "num muted" }, minutes(hit.start, hit.end)));
+    });
+    const legend = h("div", { class: "legend" },
+      ["identical", "similar", "different", "missing", "outside"].map((k) => h("span", {}, h("span", { class: `cell ${k}` }), TEXT.legend[k])),
+      h("span", {}, h("span", { class: "extra" }), TEXT.legend.extra));
+    app.append(h("section", { class: "panel overview" },
+      h("table", {},
+        h("thead", {}, h("tr", {}, TEXT.cols.map((c, i) => h("th", { class: i === 0 || i >= 3 ? "num" : "" }, c)))),
+        h("tbody", {}, rows)),
+      legend));
+  }
+
+  // ------------------------------------------------------------ details
+  if (hits.length) app.append(h("h2", {}, TEXT.details));
+  hits.forEach((hit, index) => app.append(detail(hit, index < 3)));
+
+  function detail(hit, open) {
+    const tr = tier(hit.evalue);
+    const summary = h("summary", {},
+      h("span", { class: "faint" }, `#${hit.rank}`),
+      h("span", { class: "host" }, hit.host),
+      h("span", { class: `e-${tr}` }, `E = ${sci(hit.evalue)}`),
+      h("span", { class: "muted" }, `p = ${sci(hit.p)} · ${TEXT.score} ${hit.score}`),
+      h("span", { class: "muted mono" }, `${day(hit.start)} → ${clock(hit.end)} (${minutes(hit.start, hit.end)})`));
+    const body = h("div", { class: "body" },
+      h("div", {}, h("h4", {}, TEXT.alignment), alignmentGrid(hit)),
+      h("div", { class: "two" },
+        h("div", { class: "chart" }, h("h4", {}, TEXT.chance), nullChart(hit)),
+        h("div", { class: "chart" }, h("h4", {}, TEXT.timeline), timeline(hit))),
+      h("div", {}, h("h4", {}, TEXT.evidence), evidence(hit)));
+    return h("details", { class: "hit panel", id: `hit-${hit.rank}`, open: open ? "" : null }, summary, body);
+  }
+
+  function alignmentGrid(hit) {
+    const grid = h("div", { class: "aln-grid" },
+      h("div", { class: "aln-label" }, TEXT.rowQuery), h("div", {}), h("div", { class: "aln-label" }, TEXT.rowHost));
+    for (const st of hit.alignment) {
+      if (st.kind === "pair") {
+        const qs = q.symbols[st.query_step - 1];
+        grid.append(
+          h("div", { class: "tile q", title: symbolTitle(qs) }, st.query),
+          h("div", { class: `mark ${st.relation}` }, st.relation === "identical" ? "|" : st.relation === "similar" ? "+" : ""),
+          h("div", { class: `tile ${st.relation}`, title: `${symbolTitle(st)}\n${clock(st.time)} · ${st.event}` }, st.host));
+      } else if (st.kind === "extra") {
+        grid.append(
+          h("div", { class: "tile gap" }, "—"),
+          h("div", {}),
+          h("div", { class: "tile gap", title: `${symbolTitle(st)}\n${clock(st.time)} · ${st.event}` }, st.host));
+      } else {
+        grid.append(
+          h("div", { class: "tile q", title: symbolTitle(st) }, st.query),
+          h("div", {}),
+          h("div", { class: "tile gap", title: TEXT.notSeen }, "—"));
+      }
+    }
+    return h("div", { class: "aln" }, grid);
+  }
+
+  // Shuffled scores as columns on a log axis, the fitted model as a line
+  // (an exponential tail is a straight line here) carried on to the real
+  // score, and the real score as a red rule.
+  function nullChart(hit) {
+    const nm = hit.null;
+    if (!nm || !nm.histogram || !nm.histogram.length) return h("p", {}, "—");
+    const n = nm.shuffles;
+    const scores = nm.histogram.map((x) => x[0]);
+    const lo = Math.min(...scores);
+    const hiNull = Math.max(...scores);
+    const hi = Math.max(hiNull, hit.score) + 1;
+    const counts = new Map(nm.histogram.map(([sc, c]) => [sc, c]));
+    let expected = null;
+    if (nm.model === "tail") {
+      const sf = (x) => nm.p_threshold * Math.exp(-nm.lambda * (x - nm.threshold));
+      expected = [];
+      for (let x = nm.threshold; x <= hi; x++) expected.push([x, n * (sf(x) - sf(x + 1))]);
+    } else if (nm.model === "gumbel") {
+      const sf = (x) => -Math.expm1(-Math.exp(-nm.lambda * (x - 0.5 - nm.mu)));
+      expected = [];
+      for (let x = lo; x <= hi; x++) expected.push([x, n * (sf(x) - sf(x + 1))]);
+    }
+    const ys = [...counts.values()].concat(expected ? expected.map((e) => e[1]).filter((v) => v > 0) : []);
+    const yMax = Math.max(...ys) * 1.6;
+    const atScore = expected ? (expected.find((e) => e[0] === hit.score) || [0, 0.5])[1] : 0.5;
+    const yMin = Math.min(0.5, Math.max(atScore * 0.5, 1e-12));
+    const W = 460, H = 220, ml = 44, mr = 14, mt = 14, mb = 34;
+    const x = (v) => ml + (v - lo + 0.5) / (hi - lo + 1) * (W - ml - mr);
+    const y = (v) => mt + (Math.log10(yMax) - Math.log10(Math.max(v, yMin))) / (Math.log10(yMax) - Math.log10(yMin)) * (H - mt - mb);
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": TEXT.chance });
+    // Grid lines at powers of ten.
+    for (let p = Math.ceil(Math.log10(yMin)); p <= Math.floor(Math.log10(yMax)); p++) {
+      const yy = y(Math.pow(10, p));
+      svg.append(s("line", { x1: ml, x2: W - mr, y1: yy, y2: yy, stroke: "var(--line)", "stroke-width": 1 }));
+      const label = p === 0 ? "1" : p === 1 ? "10" : p === 2 ? "100" : `10${String(p).split("").map((c) => SUP[c] || c).join("")}`;
+      svg.append(s("text", { x: ml - 6, y: yy + 3.5, "text-anchor": "end", class: "svg-text" }, label));
+    }
+    // Columns stand on half a shuffle, not on the bottom of the axis: below
+    // that line there are no shuffles, only the model's extrapolation.
+    const colW = Math.max(2, (W - ml - mr) / (hi - lo + 1) - 2);
+    for (const [sc, c] of counts) {
+      svg.append(s("rect", { x: x(sc) - colW / 2, y: y(c), width: colW, height: Math.max(0, y(0.5) - y(c)), fill: "var(--bar)", rx: 1.5 },
+        s("title", {}, `${sc}: ${c}`)));
+    }
+    if (expected && expected.length > 1) {
+      const pts = expected.filter((e) => e[1] >= yMin).map((e) => `${x(e[0]).toFixed(1)},${y(e[1]).toFixed(1)}`).join(" ");
+      svg.append(s("polyline", { points: pts, fill: "none", stroke: "var(--brand)", "stroke-width": 2, "stroke-dasharray": "5 4" }));
+    }
+    const xs = x(hit.score);
+    const color = tier(hit.evalue) === "strong" ? "var(--alert)" : tier(hit.evalue) === "weak" ? "var(--warn)" : "var(--muted)";
+    svg.append(s("line", { x1: xs, x2: xs, y1: mt, y2: H - mb, stroke: color, "stroke-width": 2 }));
+    svg.append(s("text", { x: Math.min(xs, W - mr - 2), y: mt + 10, "text-anchor": xs > W - 90 ? "end" : "start", dx: xs > W - 90 ? -6 : 6, class: "svg-text", style: `fill:${color};font-weight:600` }, `${TEXT.thisChain} · ${hit.score}`));
+    // X axis ticks.
+    const step = Math.max(1, Math.ceil((hi - lo) / 10));
+    for (let v = lo; v <= hi; v += step) {
+      svg.append(s("text", { x: x(v), y: H - mb + 15, "text-anchor": "middle", class: "svg-text" }, v));
+    }
+    svg.append(s("text", { x: (ml + W - mr) / 2, y: H - 4, "text-anchor": "middle", class: "svg-text" }, TEXT.axisX));
+    svg.append(s("text", { x: 10, y: mt + (H - mt - mb) / 2, transform: `rotate(-90 10 ${mt + (H - mt - mb) / 2})`, "text-anchor": "middle", class: "svg-text" }, TEXT.axisY.split(" (")[0]));
+    const text = hit.score > hiNull
+      ? TEXT.chanceText(n, hiNull, hit.score, sci(hit.p), sci(hit.evalue))
+      : TEXT.chanceInside(n, hit.score, sci(hit.p), sci(hit.evalue));
+    const notes = [h("p", {}, text)];
+    if (expected) notes.push(h("p", { class: "faint" }, h("span", { style: "color:var(--brand)" }, "- - - "), `${TEXT.modelLine} · ${TEXT.model[nm.model]}`));
+    if (nm.misfit !== undefined && nm.misfit > nm.critical) notes.push(h("p", { class: "e-weak" }, TEXT.misfitBad));
+    return h("div", {}, svg, notes);
+  }
+
+  function timeline(hit) {
+    const points = hit.alignment.filter((st) => st.time);
+    if (points.length < 2) return h("p", { class: "muted" }, "—");
+    const t0 = Date.parse(points[0].time);
+    const t1 = Date.parse(points[points.length - 1].time);
+    const W = 420, H = 150, ml = 16, mr = 16;
+    const x = (t) => ml + (t1 === t0 ? 0.5 : (Date.parse(t) - t0) / (t1 - t0)) * (W - ml - mr);
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": TEXT.timeline });
+    const base = 86;
+    svg.append(s("line", { x1: ml, x2: W - mr, y1: base, y2: base, stroke: "var(--line)", "stroke-width": 2 }));
+    points.forEach((st, i) => {
+      const xx = x(st.time);
+      const kind = st.kind === "extra" ? "extra" : st.relation;
+      const color = kind === "identical" ? "var(--same)" : kind === "similar" ? "var(--similar)" : kind === "different" ? "var(--different)" : "var(--faint)";
+      const up = i % 2 === 0;
+      svg.append(s("line", { x1: xx, x2: xx, y1: base, y2: up ? base - 26 : base + 26, stroke: color, "stroke-width": 1, opacity: .6 }));
+      svg.append(s("circle", { cx: xx, cy: base, r: kind === "extra" ? 3.5 : 5, fill: kind === "extra" ? "var(--panel)" : color, stroke: color, "stroke-width": 2 },
+        s("title", {}, `${clock(st.time)} · ${st.host} · ${st.event}`)));
+      svg.append(s("text", { x: xx, y: up ? base - 32 : base + 40, "text-anchor": "middle", class: "svg-mono", style: `fill:${color}` }, st.host));
+    });
+    svg.append(s("text", { x: ml, y: H - 6, class: "svg-text" }, clock(points[0].time)));
+    svg.append(s("text", { x: W - mr, y: H - 6, "text-anchor": "end", class: "svg-text" }, `${clock(points[points.length - 1].time)} · ${minutes(points[0].time, points[points.length - 1].time)}`));
+    return svg;
+  }
+
+  function evidence(hit) {
+    const rows = hit.alignment.map((st) => {
+      if (st.kind === "missing") {
+        return h("tr", {},
+          h("td", { class: "t" }, ""),
+          h("td", {}, TEXT.stepN(st.query_step)),
+          h("td", { class: "mono" }, st.query),
+          h("td", { class: "mono muted" }, st.technique),
+          h("td", {}, h("span", { class: "badge missing" }, TEXT.rel.missing)),
+          h("td", { class: "muted" }, TEXT.notSeen));
+      }
+      const kind = st.kind === "extra" ? "extra" : st.relation;
+      const rel = kind === "extra" ? TEXT.rel.extra : kind === "identical" ? TEXT.rel.identical : `${TEXT.rel[kind]} ${st.query}`;
+      return h("tr", {},
+        h("td", { class: "t" }, clock(st.time)),
+        h("td", {}, st.kind === "extra" ? TEXT.extraStep : TEXT.stepN(st.query_step)),
+        h("td", { class: "mono", title: symbolTitle(st) }, st.host),
+        h("td", { class: "mono muted" }, st.technique),
+        h("td", {}, h("span", { class: `badge ${kind}` }, rel)),
+        h("td", { class: "ev" }, st.event));
+    });
+    return h("div", { style: "overflow-x:auto" }, h("table", { class: "evidence" }, h("tbody", {}, rows)));
+  }
+
+  // ------------------------------------------------------------ baseline, how-to, footer
+  if (DATA.baseline) {
+    const m = DATA.baseline.matches;
+    app.append(h("h2", {}, TEXT.baseline));
+    app.append(h("section", { class: "panel baseline" },
+      h("p", { class: "muted", style: "margin:0 0 8px" }, TEXT.baselineText(Math.round(DATA.baseline.maxspan / 60))),
+      m.length
+        ? h("ul", { style: "margin:0;padding-left:18px" }, m.map((x) => h("li", {}, h("strong", {}, x.host), " ", h("span", { class: "mono muted" }, `${day(x.start)} → ${clock(x.end)}`))))
+        : h("p", { style: "margin:0" }, TEXT.baselineNone)));
+  }
+
+  app.append(h("h2", {}, TEXT.howto));
+  app.append(h("details", { class: "panel howto" },
+    h("summary", {}, TEXT.howto),
+    h("dl", {}, TEXT.how.flatMap(([dt, dd]) => [h("dt", {}, dt), h("dd", {}, dd)])),
+    h("p", {}, h("a", { href: "https://github.com/Ruby570bocadito/ttpblast", rel: "noopener" }, TEXT.more))));
+
+  const download = h("button", { class: "dl", type: "button", onclick: () => {
+    const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: "application/json" });
+    const a = h("a", { href: URL.createObjectURL(blob), download: "ttpblast.json" });
+    document.body.append(a); a.click(); a.remove();
+  } }, TEXT.download);
+  app.append(h("footer", {},
+    h("span", {}, TEXT.generated(DATA.ttpblast)),
+    h("span", { class: "mono faint" }, `${TEXT.settings}: max-gap ${set.max_gap} s · gap -${set.gap_open}/-${set.gap_extend} · ${TEXT.model[set.null] ? set.null : ""} · seed ${set.seed}`),
+    download));
+})();
+</script>
+</body>
+</html>

@@ -7,9 +7,12 @@ use crate::alphabet::Alphabet;
 /// for cmd, a Run key for a scheduled task) still looks like the same chain.
 pub const SAME_TACTIC: i32 = 2;
 pub const OTHER_TACTIC: i32 = -3;
-/// A gap of length k costs GAP_OPEN + (k - 1) * GAP_EXTEND.
+/// A run of k missing steps costs GAP_OPEN + (k - 1) * GAP_EXTEND.
 pub const GAP_OPEN: i32 = 4;
 pub const GAP_EXTEND: i32 = 1;
+/// A run of k extra host steps costs EXTRA_OPEN + (k - 1) * EXTRA_EXTEND.
+pub const EXTRA_OPEN: i32 = 4;
+pub const EXTRA_EXTEND: i32 = 1;
 const MIN_IDENTITY: i32 = 3;
 const MAX_IDENTITY: i32 = 10;
 
@@ -17,8 +20,14 @@ pub struct Scoring {
     matrix: Vec<i32>,
     size: usize,
     pub identity: Vec<i32>,
+    /// Query steps missing from the host.
     pub gap_open: i32,
     pub gap_extend: i32,
+    /// Extra host steps between query steps. They can cost less than missing
+    /// steps: a host does other things in the middle of a chain, and an
+    /// attacker can slip in ordinary commands on purpose.
+    pub extra_open: i32,
+    pub extra_extend: i32,
 }
 
 impl Scoring {
@@ -62,7 +71,25 @@ impl Scoring {
             identity,
             gap_open: GAP_OPEN,
             gap_extend: GAP_EXTEND,
+            extra_open: EXTRA_OPEN,
+            extra_extend: EXTRA_EXTEND,
         }
+    }
+
+    /// Other costs for missing steps (`--gap-open`, `--gap-extend`). The
+    /// E-values stay calibrated whatever they are, because the shuffles use
+    /// them too; what changes is which resemblances score high.
+    pub fn with_gaps(mut self, open: i32, extend: i32) -> Self {
+        self.gap_open = open;
+        self.gap_extend = extend;
+        self
+    }
+
+    /// Other costs for extra host steps (`--extra-open`, `--extra-extend`).
+    pub fn with_extras(mut self, open: i32, extend: i32) -> Self {
+        self.extra_open = open;
+        self.extra_extend = extend;
+        self
     }
 
     pub fn score(&self, a: usize, b: usize) -> i32 {
@@ -139,7 +166,7 @@ fn fill(query: &[usize], target: &[usize], sc: &Scoring) -> Matrices {
         for j in 1..=target.len() {
             let k = i * cols + j;
             // e: gap in the query (extra host symbol); f: query step missing.
-            e[k] = (h[k - 1] - sc.gap_open).max(e[k - 1] - sc.gap_extend);
+            e[k] = (h[k - 1] - sc.extra_open).max(e[k - 1] - sc.extra_extend);
             f[k] = (h[k - cols] - sc.gap_open).max(f[k - cols] - sc.gap_extend);
             let diagonal = h[k - cols - 1] + sc.score(query[i - 1], target[j - 1]);
             h[k] = 0.max(diagonal).max(e[k]).max(f[k]);
@@ -198,7 +225,7 @@ pub fn align(query: &[usize], target: &[usize], sc: &Scoring) -> Option<Alignmen
             }
             State::E => {
                 steps.push(Step::Extra { t: j - 1 });
-                if m.e[k] == m.h[k - 1] - sc.gap_open {
+                if m.e[k] == m.h[k - 1] - sc.extra_open {
                     state = State::H;
                 }
                 j -= 1;
@@ -268,6 +295,22 @@ mod tests {
         let aln = align(&[0, 2, 3, 0], &[0, 3, 0], &sc).unwrap();
         assert_eq!(aln.score, 5 - GAP_OPEN + 8 + 5);
         assert!(aln.steps.contains(&Step::Missing { q: 1 }));
+    }
+
+    #[test]
+    fn extra_steps_can_cost_less_than_missing_ones() {
+        // Three extra host symbols (2, 2, 2) between two query steps.
+        let (query, host) = ([3, 3], [3, 2, 2, 2, 3]);
+        let affine = align(&query, &host, &scoring()).unwrap();
+        assert_eq!(affine.score, 8 - EXTRA_OPEN - 2 * EXTRA_EXTEND + 8);
+        let cheap = scoring().with_extras(1, 0);
+        let aln = align(&query, &host, &cheap).unwrap();
+        assert_eq!(aln.score, 8 - 1 + 8);
+        assert_eq!(aln.steps.len(), 5);
+        assert_eq!(best_score(&query, &host, &cheap), aln.score);
+        // Missing steps keep their own cost.
+        let aln = align(&[0, 2, 3, 0], &[0, 3, 0], &cheap).unwrap();
+        assert_eq!(aln.score, 5 - GAP_OPEN + 8 + 5);
     }
 
     #[test]

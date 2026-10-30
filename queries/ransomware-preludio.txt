@@ -1,0 +1,15 @@
+# Lo que suele pasar en las horas antes de un ransomware operado por personas.
+# Genérica, a partir del patrón que repiten los informes públicos de respuesta
+# a incidentes: reconocimiento del dominio, robo de credenciales, saltos con
+# PsExec, desactivar el antivirus, borrar las copias de sombra y los registros.
+#
+# En la telemetría sintética de la demo no hay nada así: lo esperable es que
+# ningún host se aleje del azar. Sirve para cazar en datos reales.
+
+RSD   # T1018      controladores de dominio y otras máquinas (nltest)
+ACD   # T1087      cuentas y grupos (net group "domain admins")
+LSA   # T1003.001  credenciales de la memoria de LSASS
+PSX   # T1569.002  ejecución remota con PsExec
+DEF   # T1562.001  exclusiones o políticas de Defender
+VSS   # T1490      borrar las copias de sombra (vssadmin)
+CLR   # T1070.001  borrar los registros de eventos (wevtutil)
