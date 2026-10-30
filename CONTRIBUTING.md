@@ -49,8 +49,30 @@ algo ha cambiado en la detección y hay que explicarlo.
   por paso, como [`queries/exfiltracion.txt`](queries/exfiltracion.txt).
 - Patrones genéricos, de los que publican los informes de respuesta a incidentes: nada de
   indicadores concretos de una campaña.
-- Pásala por la telemetría de la demo: si no hay ninguna cadena parecida inyectada, ningún
-  host debería salir con E ≤ 1.
+- Añádela también a `LIBRARY` en [`src/library.rs`](src/library.rs), para que vaya dentro
+  del binario y la use `hunt`; un test comprueba que la carpeta y la lista coinciden.
+- Pásala por la telemetría de la demo con `ttpblast hunt --events data/demo/events.ndjson`:
+  si no hay ninguna cadena parecida inyectada, lo normal es que ningún host salga con
+  E ≤ 0,01, y como mucho alguno suelto con E ≤ 1.
+
+## Lector de `.evtx`
+
+[`src/evtx.rs`](src/evtx.rs) no depende de nada, y por eso hay que vigilarlo: si tocas el
+lector, compáralo con el de Windows en registros reales. El test
+`matches_windows_on_a_real_file` no corre por defecto. Saca con `Get-WinEvent` los primeros
+3.000 registros del fichero que le des y los compara uno a uno con lo que lee ttpblast: ID,
+proveedor, equipo, hora y cada valor de `EventData`. Solo funciona en Windows, y el fichero
+no sale de tu máquina:
+
+```powershell
+wevtutil epl Application $env:TEMP\Application.evtx
+$env:TTPBLAST_EVTX = "$env:TEMP\Application.evtx"
+cargo test --release matches_windows_on_a_real_file -- --ignored --nocapture
+```
+
+Tiene que acabar en «0 sin leer, 0 diferencias». Para Sysmon o Seguridad hace falta una
+PowerShell de administrador. Nunca subas un `.evtx` real al repositorio: los tests usan
+uno que se construye en memoria (`evtx::tests::Writer`).
 
 ## Telemetría sintética
 

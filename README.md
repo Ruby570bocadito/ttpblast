@@ -74,6 +74,8 @@ git clone https://github.com/Ruby570bocadito/ttpblast && cd ttpblast
 ```bash
 ttpblast demo                                      # demo guiada: telemetría sintética, dos búsquedas y su nota
 ttpblast search --query queries/phishing-lateral.txt --events data/demo/events.ndjson
+ttpblast hunt --events data/demo/events.ndjson     # las 8 consultas de la biblioteca de una vez
+ttpblast hunt --events registros/                  # una carpeta de .evtx o NDJSON, tal cual
 ttpblast search ... --html informe.html            # informe visual: un solo fichero, sin conexiones externas
 ttpblast search ... --json                         # para scripts y otras herramientas
 ttpblast search ... --lang en                      # en inglés (también TTPBLAST_LANG=en)
@@ -113,9 +115,40 @@ modo claro y oscuro.
 | [`phishing-lateral`](queries/phishing-lateral.txt) | Documento de Office → PowerShell → descarga → clave Run → descubrimiento → LSASS → SMB | exacta, variante y parcial |
 | [`exfiltracion`](queries/exfiltracion.txt) | ¿Quién soy? → cuentas → máquinas → comprimir → subir con rclone | un viernes a las 17:31 en ws-hr-02 |
 | [`ransomware-preludio`](queries/ransomware-preludio.txt) | nltest → net group → LSASS → PsExec → Defender → copias de sombra → registros | nada: para datos reales |
+| [`credenciales-rdp`](queries/credenciales-rdp.txt) | ¿Quién soy? → cuentas → máquinas → LSASS → escritorio remoto | se parece a trozos de tres cadenas |
+| [`psexec-destino`](queries/psexec-destino.txt) | servicio nuevo → PsExec lanza un intérprete → reconocimiento, visto desde el destino | nada |
+| [`lolbins-persistencia`](queries/lolbins-persistencia.txt) | mshta o regsvr32 → conexión → ejecutable en disco → BITS → clave Run | se parece a dos cadenas |
+| [`ntds-robo`](queries/ntds-robo.txt) | cuentas → copia de sombra → ntdsutil → comprimir → subir | nada |
+| [`acceso-remoto`](queries/acceso-remoto.txt) | ¿Quién soy? → sistema → Defender → AnyDesk o similar → servicio | nada |
 
 Una consulta es una lista de códigos de símbolo o IDs de técnica, en orden, con
 comentarios `#`. Escribir la tuya es copiar una y cambiar las líneas.
+
+**`ttpblast hunt` pasa todas de una vez** por la misma telemetría, leída una sola vez, y da
+un veredicto por consulta: la vista de triaje antes de mirar ninguna en detalle. Los hosts
+que señalan varias consultas salen aparte. En la demo son justo los cuatro atacados,
+porque las consultas emparentadas encajan en trozos de sus cadenas:
+
+```text
+ttpblast hunt · 8 consultas contra data/demo/events.ndjson
+32.080 eventos · 40 hosts · 0,68 s
+
+  ● phishing-lateral      3 hosts muy por encima del azar  ws-legal-02 2.3e-6 · ws-finance-04 1.8e-4 · ws-sales-03 4.0e-4
+  ● exfiltracion          1 host muy por encima del azar   ws-hr-02 6.4e-3
+  ○ ransomware-preludio   nada se aleja del azar           (el mejor, ws-ops-02, tiene E = 1,40)
+  ◐ credenciales-rdp      4 hosts a revisar                ws-finance-04 0,03 · ws-hr-02 0,41 · ws-legal-02 0,52 · it-admin-02 0,60
+  ...
+
+Hosts que señalan varias consultas (lo primero que miraría):
+  ◆ ws-finance-04: phishing-lateral, credenciales-rdp
+  ◆ ws-hr-02: exfiltracion, credenciales-rdp
+  ◆ ws-legal-02: phishing-lateral, credenciales-rdp, lolbins-persistencia
+  ◆ ws-sales-03: phishing-lateral, lolbins-persistencia
+```
+
+Con ocho consultas, algún «a revisar» suelto en un administrador (E entre 0,1 y 1) es lo
+esperable por azar. `--json` da lo mismo para scripts y `--html CARPETA`, un informe por
+consulta.
 
 **Cada host se compara consigo mismo.** La consulta de exfiltración tiene una trampa:
 srv-backup-01 comprime y sube copias con rclone todas las noches. Su parecido con la
@@ -123,7 +156,17 @@ consulta (puntuación 12) es mayor que el del segundo de la tabla, pero para ese
 normal: E = 40. El portátil de recursos humanos que hace lo mismo un viernes por la tarde,
 después de mirar cuentas y máquinas, sale con E = 6,4·10⁻³.
 
-## Con tu propia telemetría (Windows + Sysmon)
+## Con tu propia telemetría
+
+`--events` acepta un fichero `.evtx` de Windows, un NDJSON o una carpeta con varios de
+ellos (por ejemplo, los registros recogidos de varios equipos en una respuesta a
+incidentes). Los `.evtx` se leen directamente, sin dependencias y sin pasar por PowerShell.
+El lector da exactamente lo mismo que el de Windows (`Get-WinEvent`) en 8.240 registros
+reales de cuatro registros distintos, y un test lo compara con cualquier `.evtx` que le
+des (ver [CONTRIBUTING](CONTRIBUTING.md)). Un fichero dañado o manipulado no lo tumba: los
+registros ilegibles se saltan y se cuentan.
+
+### Con Sysmon
 
 [Sysmon](https://learn.microsoft.com/es-es/sysinternals/downloads/sysmon) es una
 herramienta gratuita de Microsoft Sysinternals que registra lo que pasa en el equipo
@@ -152,11 +195,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
 .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --html data\sysmon\informe.html
 ```
 
+O, sin el script, con el registro entero tal cual (también como administrador):
+
+```powershell
+New-Item -ItemType Directory -Force data\evtx | Out-Null
+wevtutil epl Microsoft-Windows-Sysmon/Operational data\evtx\sysmon.evtx
+.\target\release\ttpblast.exe hunt --events data\evtx --html data\evtx\informes
+```
+
 - **Privacidad.** [`scripts/export-sysmon.ps1`](scripts/export-sysmon.ps1) solo exporta
   rutas de procesos, ficheros y claves de registro, y destinos de red. No exporta líneas
   de comandos, usuarios ni hashes. El resultado queda en `data\`, que git ignora.
   Tampoco exporta los eventos de sus propias ejecuciones (la de ahora y las anteriores),
-  para no contaminar la medición.
+  para no contaminar la medición. El `.evtx` entero, en cambio, sí lleva líneas de
+  comandos, usuarios y hashes: ttpblast no los usa, pero no lo compartas sin mirarlo.
 - **Otros formatos.** También se leen los eventos de Sysmon enviados por Winlogbeat 6 o 7
   y las exportaciones planas con los campos de Sysmon en la raíz (`EventID`, `Hostname`,
   `Image`…), el formato de los Security Datasets de OTRF. Y cualquier NDJSON con campos al
@@ -171,6 +223,34 @@ powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
 - **Espacio.** Sysmon escribe en el registro de eventos, que tiene un tamaño máximo; si se
   llena, se pierden los eventos más antiguos.
 - **Desinstalar.** `C:\Tools\Sysmon\Sysmon64.exe -u`.
+
+### Sin Sysmon: los registros de Windows
+
+Muchos equipos no tienen Sysmon, pero Windows ya registra parte de lo mismo si se activa su
+auditoría. ttpblast traduce:
+
+| Registro | Evento | Qué es | Para qué símbolos |
+|---|---|---|---|
+| Seguridad | 4688 | proceso creado (con su padre desde Windows 10) | casi todos: PSH, CMD, USR, SID, TSK, UEX… |
+| Seguridad | 4657 | valor del registro escrito (con una SACL en la clave) | RUN, SVC, DEF |
+| Seguridad | 5156 | conexión permitida por el firewall (solo salientes) | SMB, WRM, RDP, C2W, EXF |
+| Sistema | 7045 | servicio instalado | SVC |
+
+Para la creación de procesos, en una PowerShell como administrador (el GUID es la
+subcategoría «Creación de procesos», con cualquier idioma de Windows):
+
+```powershell
+auditpol /set /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}" /success:enable
+# … días después:
+New-Item -ItemType Directory -Force data\evtx | Out-Null
+wevtutil epl Security data\evtx\security.evtx
+wevtutil epl System data\evtx\system.evtx
+.\target\release\ttpblast.exe hunt --events data\evtx
+```
+
+El laboratorio de la CI lo comprueba en una máquina real: `whoami`, `hostname` y `schtasks`
+salen codificados igual desde el registro de Seguridad que desde Sysmon. Los accesos a
+LSASS no tienen equivalente sin Sysmon, así que el paso `LSA` no aparecerá.
 
 ## Cómo funciona
 
@@ -337,10 +417,11 @@ conocidas y para priorizar.
   extra, porque los huecos afines prefieren un hueco largo a dos cortos.
 - **Escala.** El coste es O(m·n) por tramo, más los barajados, repartido entre los núcleos.
   Para millones de eventos hará falta un índice de semillas, como hace BLAST.
-- **Formato de entrada.** NDJSON con campos al estilo ECS. El acceso a procesos usa
-  `process.target.name`, que no es estándar. Sysmon (exportado con el script, por
-  Winlogbeat 6 o 7, o plano como en OTRF) se traduce solo; otras fuentes necesitan mapear
-  campos o un adaptador.
+- **Formato de entrada.** `.evtx` o NDJSON con campos al estilo ECS. El acceso a procesos
+  usa `process.target.name`, que no es estándar. Sysmon (en `.evtx`, exportado con el
+  script, por Winlogbeat 6 o 7, o plano como en OTRF) y los eventos 4688, 4657, 5156 y 7045
+  de Windows se traducen solos; otras fuentes (Linux, EDR) necesitan mapear campos o un
+  adaptador.
 
 ## Hoja de ruta
 
@@ -351,22 +432,29 @@ conocidas y para priorizar.
 3. Aprender la matriz de sustitución de cadenas reales.
 4. Calibración con telemetría real, y decidir el modelo nulo: cola o Gumbel, tamaño de
    bloque, hosts parecidos como referencia.
-5. Más fuentes de entrada: ficheros EVTX directamente y salidas NDJSON de EDR abiertos.
+5. Más fuentes de entrada: salidas NDJSON de EDR abiertos y telemetría de Linux.
 6. Índice de semillas (k-mers) para volúmenes grandes.
 7. Huecos que dependan del tiempo, y cadenas entre hosts.
 
-Hecho en la v0.2: medir el coste de evasión (y el resultado está arriba), leer Winlogbeat 6
-y el formato plano de OTRF. El detalle, en el [CHANGELOG](CHANGELOG.md).
+Hecho: medir el coste de evasión (y el resultado está arriba), leer Winlogbeat 6 y el
+formato plano de OTRF (v0.2); leer `.evtx` directamente, los registros de Windows sin
+Sysmon y carpetas enteras, y pasar toda la biblioteca con `hunt` (sin publicar). El
+detalle, en el [CHANGELOG](CHANGELOG.md).
 
 ## Formatos
 
-- **Eventos:** un JSON por línea. Los objetos anidados y las claves con puntos son
+- **Eventos:** un JSON por línea, o ficheros `.evtx` de Windows (se distinguen por sus
+  primeros bytes, no por la extensión), o una carpeta, de la que se leen los `.evtx`,
+  `.ndjson`, `.jsonl` y `.json`. En JSON, los objetos anidados y las claves con puntos son
   equivalentes, y los valores se comparan sin distinguir mayúsculas. El host sale de
   `host.name` (o `host.hostname`, `agent.hostname`, `winlog.computer_name`,
   `computer_name`, `Hostname`) y la hora de `@timestamp` (o `timestamp`, `UtcTime`).
   Campos que usan las reglas: `process.name`, `process.parent.name`,
   `process.target.name`, `destination.port`, `destination.address`, `file.path`,
-  `file.extension`, `registry.path`, `event.category` y `event.action`.
+  `file.extension`, `registry.path`, `event.category` y `event.action`. Un registro de un
+  `.evtx` da `EventID`, `Channel`, `EventRecordID`, `SourceName` (el proveedor),
+  `Hostname`, `@timestamp`, el resto de `System` como `System.*` y cada valor de
+  `EventData` por su nombre.
 - **Consultas:** códigos de símbolo o IDs de técnica, separados por espacios, comas o
   flechas; `#` inicia un comentario. Ver [`queries/`](queries/).
 - **Alfabeto:** JSON con `symbols`. Cada símbolo tiene `code`, `technique`, `tactic`,
@@ -374,7 +462,9 @@ y el formato plano de OTRF. El detalle, en el [CHANGELOG](CHANGELOG.md).
   primer símbolo que encaja. Se carga otro con `--alphabet`.
 - **Salida JSON** (`--json`): la consulta, la telemetría, los ajustes, el veredicto
   (`summary`), cada resultado con su alineamiento, sus pruebas y el histograma de sus
-  barajados, y la línea base exacta.
+  barajados, y la línea base exacta. `hunt --json` da, por consulta, los hosts muy por
+  encima del azar (`strong`), los que merecen otra mirada (`weak`) y el mejor, y aparte
+  los hosts que señalan varias consultas (`repeated`).
 
 ## Contribuir
 
