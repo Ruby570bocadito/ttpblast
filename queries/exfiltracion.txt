@@ -1,0 +1,14 @@
+# Reconocimiento -> compresión -> subida a la nube.
+# Ficticia, del estilo de los robos de datos que acaban en extorsión: mirar
+# quién soy y qué cuentas y máquinas hay, empaquetar lo interesante y subirlo
+# con una herramienta de sincronización como rclone.
+#
+# Ojo: un servidor de copias de seguridad hace los dos últimos pasos todas las
+# noches. ttpblast compara cada host consigo mismo, así que en ese servidor
+# comprimir y subir es lo normal; en un portátil de recursos humanos, no.
+
+USR   # T1033      ¿quién soy? (whoami)
+ACD   # T1087      cuentas y grupos (net user, net group)
+RSD   # T1018      otras máquinas de la red (nltest)
+ARC   # T1560.001  comprimir lo que se va a llevar
+EXF   # T1567.002  subirlo a la nube (rclone)

@@ -1,5 +1,8 @@
-# Cadena de la demo: documento de Office malicioso -> movimiento lateral.
-# Ficticia, del estilo de las que describen los informes de amenazas.
+# Documento de Office malicioso -> movimiento lateral.
+# Ficticia, del estilo de las que describen los informes de amenazas: alguien
+# abre un adjunto, el intérprete descarga una herramienta, se queda a vivir en
+# la clave Run, mira dónde ha caído, roba credenciales y salta a otra máquina.
+#
 # Pasos con su código de símbolo o su ID de técnica de ATT&CK
 # (`ttpblast alphabet` muestra los disponibles).
 
@@ -8,7 +11,7 @@ PSH   # T1059.001  PowerShell
 C2W   # T1071.001  conexión web desde el intérprete
 ITT   # T1105      descarga de una herramienta
 RUN   # T1547.001  persistencia en la clave Run
-ACD   # T1087      descubrimiento de cuentas
+USR   # T1033      ¿quién soy? (whoami)
 SID   # T1082      información del sistema
 LSA   # T1003.001  acceso a la memoria de LSASS
 SMB   # T1021.002  movimiento lateral por SMB

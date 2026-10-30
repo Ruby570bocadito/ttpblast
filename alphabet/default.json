@@ -1,94 +1,159 @@
 {
-  "description": "Alfabeto inicial de ttpblast. Cada evento relevante se convierte en un símbolo (una técnica de MITRE ATT&CK). Las reglas usan campos al estilo ECS; dentro de una regla, todas las condiciones deben cumplirse, y basta con que se cumpla una regla del símbolo. El primer símbolo que encaja gana, así que el orden importa. Los eventos que no encajan con ningún símbolo se ignoran. Cada técnica tiene una sola táctica (la principal) para construir la matriz de sustitución.",
+  "description": "Alfabeto por defecto de ttpblast. Cada evento relevante se convierte en un símbolo (una técnica de MITRE ATT&CK). Las reglas usan campos al estilo ECS; dentro de una regla, todas las condiciones deben cumplirse, y basta con que se cumpla una regla del símbolo. El primer símbolo que encaja gana, así que el orden importa: lo más específico va primero. Los eventos que no encajan con ningún símbolo se ignoran. Cada técnica tiene una sola táctica (la principal) para construir la matriz de sustitución. Las reglas solo miran nombres de procesos, rutas y destinos de red, nunca líneas de comandos: por eso net.exe cuenta entero como descubrimiento de cuentas y vssadmin.exe como herramienta de copias de sombra, se use para lo que se use.",
   "symbols": [
     {
       "code": "UEX", "technique": "T1204.002", "tactic": "execution",
-      "name": "Documento de Office que lanza un proceso",
+      "name": {"es": "Documento de Office que lanza un proceso", "en": "Office document that starts a process"},
       "rules": [{"event.action": "start", "process.parent.name": ["winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe"]}]
     },
     {
+      "code": "WMI", "technique": "T1047", "tactic": "execution",
+      "name": {"es": "Ejecución mediante WMI", "en": "Execution through WMI"},
+      "rules": [{"event.action": "start", "process.name": "wmic.exe"}, {"event.action": "start", "process.parent.name": "wmiprvse.exe"}]
+    },
+    {
+      "code": "PSX", "technique": "T1569.002", "tactic": "execution",
+      "name": {"es": "Ejecución como servicio (PsExec)", "en": "Service execution (PsExec)"},
+      "rules": [{"event.action": "start", "process.name": ["psexec.exe", "psexec64.exe", "psexesvc.exe"]}, {"event.action": "start", "process.parent.name": "psexesvc.exe"}]
+    },
+    {
       "code": "LSA", "technique": "T1003.001", "tactic": "credential-access",
-      "name": "Acceso a la memoria de LSASS",
+      "name": {"es": "Acceso a la memoria de LSASS", "en": "LSASS memory access"},
       "rules": [{"event.action": "access", "process.target.name": "lsass.exe"}]
     },
     {
+      "code": "NTD", "technique": "T1003.003", "tactic": "credential-access",
+      "name": {"es": "Copia de la base de datos de Active Directory (ntdsutil)", "en": "Active Directory database copy (ntdsutil)"},
+      "rules": [{"event.action": "start", "process.name": "ntdsutil.exe"}]
+    },
+    {
       "code": "RUN", "technique": "T1547.001", "tactic": "persistence",
-      "name": "Clave Run del registro",
+      "name": {"es": "Clave Run del registro", "en": "Registry Run key"},
       "rules": [{"event.category": "registry", "registry.path|contains": "\\currentversion\\run"}]
     },
     {
       "code": "SVC", "technique": "T1543.003", "tactic": "persistence",
-      "name": "Servicio de Windows creado o modificado",
+      "name": {"es": "Servicio de Windows creado o modificado", "en": "Windows service created or modified"},
       "rules": [{"event.category": "registry", "registry.path|contains": "\\currentcontrolset\\services\\"}]
     },
     {
+      "code": "DEF", "technique": "T1562.001", "tactic": "defense-evasion",
+      "name": {"es": "Políticas o exclusiones de Microsoft Defender modificadas", "en": "Microsoft Defender policies or exclusions modified"},
+      "rules": [{"event.category": "registry", "registry.path|contains": ["\\policies\\microsoft\\windows defender", "\\windows defender\\exclusions\\"]}]
+    },
+    {
       "code": "ITT", "technique": "T1105", "tactic": "command-and-control",
-      "name": "Ejecutable escrito por un intérprete o binario del sistema",
+      "name": {"es": "Ejecutable escrito por un intérprete o binario del sistema", "en": "Executable written by an interpreter or system binary"},
       "rules": [{"event.category": "file", "file.extension": ["exe", "dll"], "process.name": ["powershell.exe", "pwsh.exe", "cmd.exe", "certutil.exe", "bitsadmin.exe", "curl.exe"]}]
     },
     {
       "code": "SMB", "technique": "T1021.002", "tactic": "lateral-movement",
-      "name": "Conexión SMB desde un intérprete",
+      "name": {"es": "Conexión SMB desde un intérprete", "en": "SMB connection from an interpreter"},
       "rules": [{"event.category": "network", "destination.port": 445, "process.name": ["powershell.exe", "pwsh.exe", "cmd.exe", "wmic.exe"]}]
     },
     {
       "code": "WRM", "technique": "T1021.006", "tactic": "lateral-movement",
-      "name": "Windows Remote Management",
+      "name": {"es": "Windows Remote Management", "en": "Windows Remote Management"},
       "rules": [{"event.category": "network", "destination.port": [5985, 5986]}]
     },
     {
       "code": "RDP", "technique": "T1021.001", "tactic": "lateral-movement",
-      "name": "Escritorio remoto",
+      "name": {"es": "Escritorio remoto", "en": "Remote Desktop"},
       "rules": [{"event.action": "start", "process.name": "mstsc.exe"}, {"event.category": "network", "destination.port": 3389}]
     },
     {
       "code": "EXF", "technique": "T1567.002", "tactic": "exfiltration",
-      "name": "Subida a la nube con una herramienta de línea de comandos",
+      "name": {"es": "Subida a la nube con una herramienta de línea de comandos", "en": "Upload to the cloud with a command-line tool"},
       "rules": [{"event.category": "network", "destination.port": 443, "process.name": ["rclone.exe", "curl.exe"]}]
     },
     {
       "code": "C2W", "technique": "T1071.001", "tactic": "command-and-control",
-      "name": "Conexión web desde un intérprete o binario del sistema",
+      "name": {"es": "Conexión web desde un intérprete o binario del sistema", "en": "Web connection from an interpreter or system binary"},
       "rules": [{"event.category": "network", "destination.port": [80, 443], "process.name": ["powershell.exe", "pwsh.exe", "rundll32.exe", "regsvr32.exe", "mshta.exe"]}]
     },
     {
+      "code": "RMM", "technique": "T1219", "tactic": "command-and-control",
+      "name": {"es": "Software de acceso remoto (AnyDesk, TeamViewer…)", "en": "Remote access software (AnyDesk, TeamViewer…)"},
+      "rules": [{"event.action": "start", "process.name": ["anydesk.exe", "teamviewer.exe", "rustdesk.exe", "screenconnect.clientservice.exe"]}]
+    },
+    {
       "code": "PSH", "technique": "T1059.001", "tactic": "execution",
-      "name": "PowerShell",
+      "name": {"es": "PowerShell", "en": "PowerShell"},
       "rules": [{"event.action": "start", "process.name": ["powershell.exe", "pwsh.exe"]}]
     },
     {
       "code": "CMD", "technique": "T1059.003", "tactic": "execution",
-      "name": "Intérprete de comandos de Windows",
+      "name": {"es": "Intérprete de comandos de Windows", "en": "Windows command shell"},
       "rules": [{"event.action": "start", "process.name": "cmd.exe"}]
     },
     {
       "code": "WSH", "technique": "T1059.005", "tactic": "execution",
-      "name": "Windows Script Host",
+      "name": {"es": "Windows Script Host", "en": "Windows Script Host"},
       "rules": [{"event.action": "start", "process.name": ["wscript.exe", "cscript.exe"]}]
     },
     {
+      "code": "PRX", "technique": "T1218", "tactic": "defense-evasion",
+      "name": {"es": "Ejecución a través de mshta o regsvr32", "en": "Execution through mshta or regsvr32"},
+      "rules": [{"event.action": "start", "process.name": ["mshta.exe", "regsvr32.exe"]}]
+    },
+    {
+      "code": "BIT", "technique": "T1197", "tactic": "defense-evasion",
+      "name": {"es": "Trabajos de BITS (bitsadmin)", "en": "BITS jobs (bitsadmin)"},
+      "rules": [{"event.action": "start", "process.name": "bitsadmin.exe"}]
+    },
+    {
       "code": "TSK", "technique": "T1053.005", "tactic": "persistence",
-      "name": "Tarea programada",
+      "name": {"es": "Tarea programada", "en": "Scheduled task"},
       "rules": [{"event.action": "start", "process.name": "schtasks.exe"}]
     },
     {
+      "code": "VSS", "technique": "T1490", "tactic": "impact",
+      "name": {"es": "Herramienta de copias de sombra o de arranque (vssadmin, wbadmin, bcdedit)", "en": "Shadow copy or boot tool (vssadmin, wbadmin, bcdedit)"},
+      "rules": [{"event.action": "start", "process.name": ["vssadmin.exe", "wbadmin.exe", "bcdedit.exe"]}]
+    },
+    {
+      "code": "CLR", "technique": "T1070.001", "tactic": "defense-evasion",
+      "name": {"es": "Utilidad de registros de eventos (wevtutil)", "en": "Event log utility (wevtutil)"},
+      "rules": [{"event.action": "start", "process.name": "wevtutil.exe"}]
+    },
+    {
       "code": "SID", "technique": "T1082", "tactic": "discovery",
-      "name": "Información del sistema",
+      "name": {"es": "Información del sistema", "en": "System information"},
       "rules": [{"event.action": "start", "process.name": ["systeminfo.exe", "hostname.exe"]}]
     },
     {
+      "code": "USR", "technique": "T1033", "tactic": "discovery",
+      "name": {"es": "Usuario del sistema (whoami, quser)", "en": "System owner/user (whoami, quser)"},
+      "rules": [{"event.action": "start", "process.name": ["whoami.exe", "quser.exe", "qwinsta.exe"]}]
+    },
+    {
       "code": "ACD", "technique": "T1087", "tactic": "discovery",
-      "name": "Descubrimiento de cuentas",
-      "rules": [{"event.action": "start", "process.name": ["whoami.exe", "quser.exe"]}]
+      "name": {"es": "Descubrimiento de cuentas y grupos (net)", "en": "Account and group discovery (net)"},
+      "rules": [{"event.action": "start", "process.name": "net.exe"}, {"event.action": "start", "process.name": "net1.exe", "process.parent.name": ["cmd.exe", "powershell.exe", "pwsh.exe"]}]
     },
     {
       "code": "RSD", "technique": "T1018", "tactic": "discovery",
-      "name": "Descubrimiento de sistemas remotos",
+      "name": {"es": "Descubrimiento de sistemas remotos", "en": "Remote system discovery"},
       "rules": [{"event.action": "start", "process.name": ["nltest.exe", "arp.exe"]}]
     },
     {
+      "code": "PRC", "technique": "T1057", "tactic": "discovery",
+      "name": {"es": "Lista de procesos (tasklist)", "en": "Process list (tasklist)"},
+      "rules": [{"event.action": "start", "process.name": ["tasklist.exe", "qprocess.exe"]}]
+    },
+    {
+      "code": "NCD", "technique": "T1016", "tactic": "discovery",
+      "name": {"es": "Configuración de red (ipconfig, route)", "en": "Network configuration (ipconfig, route)"},
+      "rules": [{"event.action": "start", "process.name": ["ipconfig.exe", "route.exe", "getmac.exe"]}]
+    },
+    {
+      "code": "NCX", "technique": "T1049", "tactic": "discovery",
+      "name": {"es": "Conexiones de red (netstat)", "en": "Network connections (netstat)"},
+      "rules": [{"event.action": "start", "process.name": "netstat.exe"}]
+    },
+    {
       "code": "ARC", "technique": "T1560.001", "tactic": "collection",
-      "name": "Compresión con una utilidad",
+      "name": {"es": "Compresión con una utilidad", "en": "Compression with a utility"},
       "rules": [{"event.action": "start", "process.name": ["7z.exe", "rar.exe", "tar.exe"]}]
     }
   ]

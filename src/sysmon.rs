@@ -1,7 +1,8 @@
-//! Sysmon events (exported with scripts/export-sysmon.ps1, or shipped by
-//! Winlogbeat) carry Sysmon's own field names: Image, ParentImage,
-//! TargetObject... This fills in the ECS-style fields the alphabet uses.
-//! Fields already present are kept, so ECS data passes through untouched.
+//! Sysmon events (exported with scripts/export-sysmon.ps1, shipped by
+//! Winlogbeat 6 or 7, or flat exports like OTRF's Security Datasets) carry
+//! Sysmon's own field names: Image, ParentImage, TargetObject... This fills
+//! in the ECS-style fields the alphabet uses. Fields already present are
+//! kept, so ECS data passes through untouched.
 
 use std::collections::HashMap;
 
@@ -10,11 +11,15 @@ pub fn normalize(fields: &mut HashMap<String, String>) {
         return;
     };
     let data = |name: &str| -> Option<String> {
-        [name.to_string(), format!("winlog.event_data.{name}")]
-            .iter()
-            .find_map(|key| fields.get(key))
-            .filter(|v| !v.is_empty() && v.as_str() != "-")
-            .cloned()
+        [
+            name.to_string(),
+            format!("winlog.event_data.{name}"),
+            format!("event_data.{name}"),
+        ]
+        .iter()
+        .find_map(|key| fields.get(key))
+        .filter(|v| !v.is_empty() && v.as_str() != "-")
+        .cloned()
     };
     let process = |key: &str| data(key).map(|path| file_name(&path).to_string());
 
@@ -83,19 +88,28 @@ pub fn normalize(fields: &mut HashMap<String, String>) {
     }
 }
 
-/// The Sysmon event ID, from our exporter or from Winlogbeat. Other Windows
-/// logs reuse the same small numbers, so Winlogbeat events must name Sysmon
-/// as their provider.
+/// The Sysmon event ID, from our exporter or from another layout. Other
+/// Windows logs reuse the same small numbers, so those events must name
+/// Sysmon as their provider or channel.
 fn event_id(fields: &HashMap<String, String>) -> Option<String> {
     if let Some(id) = fields.get("sysmon.event_id") {
         return Some(id.clone());
     }
-    let provider = fields.get("winlog.provider_name")?;
-    if provider.contains("sysmon") {
-        fields.get("winlog.event_id").cloned()
-    } else {
-        None
-    }
+    // (provider or channel, event ID): Winlogbeat 7, Winlogbeat 6, flat exports.
+    const LAYOUTS: [(&str, &str); 5] = [
+        ("winlog.provider_name", "winlog.event_id"),
+        ("winlog.channel", "winlog.event_id"),
+        ("source_name", "event_id"),
+        ("SourceName", "EventID"),
+        ("Channel", "EventID"),
+    ];
+    LAYOUTS.iter().find_map(|(source, id)| {
+        fields
+            .get(*source)
+            .filter(|s| s.contains("sysmon"))
+            .and(fields.get(*id))
+            .cloned()
+    })
 }
 
 /// `c:\windows\system32\cmd.exe` -> `cmd.exe`.
@@ -153,11 +167,34 @@ mod tests {
     fn winlogbeat_layout() {
         let sysmon = r#"{"host":{"name":"pc"},"winlog":{"provider_name":"Microsoft-Windows-Sysmon","event_id":"1",
             "event_data":{"Image":"C:\\Windows\\System32\\whoami.exe","ParentImage":"C:\\Windows\\System32\\cmd.exe"}}}"#;
-        assert_eq!(encode(sysmon).as_deref(), Some("ACD"));
+        assert_eq!(encode(sysmon).as_deref(), Some("USR"));
         // Event 1 of another provider is not a Sysmon process creation.
         let other = r#"{"host":{"name":"pc"},"winlog":{"provider_name":"Service Control Manager","event_id":"1",
             "event_data":{"Image":"C:\\Windows\\System32\\whoami.exe"}}}"#;
         assert_eq!(encode(other), None);
+    }
+
+    #[test]
+    fn flat_and_winlogbeat6_layouts() {
+        // Sysmon fields at the root, as in OTRF's Security Datasets.
+        let flat = r#"{"@timestamp":"2020-09-21T19:03:22.123Z","Hostname":"WORKSTATION5.theshire.local",
+            "SourceName":"Microsoft-Windows-Sysmon","Channel":"Microsoft-Windows-Sysmon/Operational","EventID":1,
+            "Image":"C:\\Windows\\System32\\net.exe","ParentImage":"C:\\Windows\\System32\\cmd.exe"}"#;
+        assert_eq!(encode(flat).as_deref(), Some("ACD"));
+        let event = Event::from_json(&serde_json::from_str(flat).unwrap()).unwrap();
+        assert_eq!(event.host, "workstation5.theshire.local");
+        assert!(event.ts.is_some());
+        // Without @timestamp, Sysmon's UtcTime (UTC, space-separated).
+        let utc_only = r#"{"Hostname":"pc","Channel":"Microsoft-Windows-Sysmon/Operational","EventID":1,
+            "UtcTime":"2020-09-21 19:03:22.123","Image":"C:\\Windows\\System32\\whoami.exe"}"#;
+        let event = Event::from_json(&serde_json::from_str(utc_only).unwrap()).unwrap();
+        assert_eq!(event.ts, crate::time::parse_rfc3339("2020-09-21T19:03:22Z"));
+        // Security log event 4688 has an Image-like field too, but is not Sysmon.
+        let security = r#"{"Hostname":"pc","Channel":"Security","EventID":1,"Image":"C:\\Windows\\System32\\whoami.exe"}"#;
+        assert_eq!(encode(security), None);
+        let winlogbeat6 = r#"{"computer_name":"PC-6","source_name":"Microsoft-Windows-Sysmon","event_id":10,
+            "event_data":{"SourceImage":"C:\\Temp\\x.exe","TargetImage":"C:\\Windows\\System32\\lsass.exe"}}"#;
+        assert_eq!(encode(winlogbeat6).as_deref(), Some("LSA"));
     }
 
     #[test]

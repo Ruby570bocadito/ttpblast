@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::events::Event;
+use crate::i18n::{self, Lang};
 
 pub const DEFAULT_JSON: &str = include_str!("../alphabet/default.json");
 
@@ -15,7 +16,8 @@ pub struct Symbol {
     pub code: String,
     pub technique: String,
     pub tactic: String,
-    pub name: String,
+    /// `"name": "…"`, or one per language: `"name": {"es": "…", "en": "…"}`.
+    names: Vec<(String, String)>,
     rules: Vec<Rule>,
 }
 
@@ -55,6 +57,19 @@ impl Symbol {
             .iter()
             .any(|rule| rule.0.iter().all(|c| c.matches(event)))
     }
+
+    /// The name in the output language, else in Spanish, else the first one.
+    pub fn name(&self) -> &str {
+        self.name_in(i18n::current())
+    }
+
+    pub fn name_in(&self, lang: Lang) -> &str {
+        let find = |code: &str| self.names.iter().find(|(l, _)| l == code);
+        find(lang.code())
+            .or_else(|| find("es"))
+            .or(self.names.first())
+            .map_or("", |(_, name)| name.as_str())
+    }
 }
 
 pub struct Alphabet {
@@ -69,51 +84,92 @@ impl Alphabet {
     }
 
     pub fn from_json(text: &str) -> Result<Self, String> {
-        let root: Value =
-            serde_json::from_str(text).map_err(|e| format!("alfabeto no válido: {e}"))?;
+        let root: Value = serde_json::from_str(text)
+            .map_err(|e| tr!("alfabeto no válido: {e}", "invalid alphabet: {e}"))?;
         let list = root
             .get("symbols")
             .and_then(Value::as_array)
-            .ok_or("el alfabeto necesita una lista \"symbols\"")?;
+            .ok_or_else(|| {
+                tr!(
+                    "el alfabeto necesita una lista \"symbols\"",
+                    "the alphabet needs a \"symbols\" list"
+                )
+            })?;
 
         let mut symbols = Vec::new();
         let mut lookup = HashMap::new();
         for (i, entry) in list.iter().enumerate() {
+            let n = i + 1;
             let text_field = |key: &str| {
                 entry
                     .get(key)
                     .and_then(Value::as_str)
                     .map(str::to_string)
-                    .ok_or_else(|| format!("símbolo {}: falta \"{key}\"", i + 1))
+                    .ok_or_else(|| {
+                        tr!(
+                            "símbolo {n}: falta \"{key}\"",
+                            "symbol {n}: missing \"{key}\""
+                        )
+                    })
             };
             let code = text_field("code")?.to_uppercase();
             let technique = text_field("technique")?.to_uppercase();
             let rules = entry
                 .get("rules")
                 .and_then(Value::as_array)
-                .ok_or_else(|| format!("símbolo {code}: falta la lista \"rules\""))?
+                .ok_or_else(|| {
+                    tr!(
+                        "símbolo {code}: falta la lista \"rules\"",
+                        "symbol {code}: missing the \"rules\" list"
+                    )
+                })?
                 .iter()
                 .map(parse_rule)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("símbolo {code}: {e}"))?;
+                .map_err(|e| tr!("símbolo {code}: {e}", "symbol {code}: {e}"))?;
             if rules.is_empty() {
-                return Err(format!("símbolo {code}: necesita al menos una regla"));
+                return Err(tr!(
+                    "símbolo {code}: necesita al menos una regla",
+                    "symbol {code}: needs at least one rule"
+                ));
             }
             for key in [code.to_lowercase(), technique.to_lowercase()] {
                 if lookup.insert(key.clone(), i).is_some() {
-                    return Err(format!("«{key}» aparece en más de un símbolo"));
+                    return Err(tr!(
+                        "«{key}» aparece en más de un símbolo",
+                        "«{key}» appears in more than one symbol"
+                    ));
                 }
+            }
+            let names = match entry.get("name") {
+                Some(Value::String(name)) => vec![("es".to_string(), name.clone())],
+                Some(Value::Object(by_lang)) => by_lang
+                    .iter()
+                    .filter_map(|(lang, name)| {
+                        Some((lang.to_lowercase(), name.as_str()?.to_string()))
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            if names.is_empty() {
+                return Err(tr!(
+                    "símbolo {code}: falta \"name\" (un texto, o uno por idioma: {{\"es\": …, \"en\": …}})",
+                    "symbol {code}: missing \"name\" (a text, or one per language: {{\"es\": …, \"en\": …}})"
+                ));
             }
             symbols.push(Symbol {
                 code,
                 technique,
                 tactic: text_field("tactic")?.to_lowercase(),
-                name: text_field("name")?,
+                names,
                 rules,
             });
         }
         if symbols.is_empty() {
-            return Err("el alfabeto no tiene símbolos".into());
+            return Err(tr!(
+                "el alfabeto no tiene símbolos",
+                "the alphabet has no symbols"
+            ));
         }
         Ok(Alphabet { symbols, lookup })
     }
@@ -134,7 +190,12 @@ impl Alphabet {
 }
 
 fn parse_rule(value: &Value) -> Result<Rule, String> {
-    let object = value.as_object().ok_or("cada regla debe ser un objeto")?;
+    let object = value.as_object().ok_or_else(|| {
+        tr!(
+            "cada regla debe ser un objeto",
+            "each rule must be an object"
+        )
+    })?;
     let mut conditions = Vec::new();
     for (key, wanted) in object {
         let (field, op) = match key.split_once('|') {
@@ -142,14 +203,19 @@ fn parse_rule(value: &Value) -> Result<Rule, String> {
             Some((field, "contains")) => (field, Op::Contains),
             Some((field, "startswith")) => (field, Op::StartsWith),
             Some((field, "endswith")) => (field, Op::EndsWith),
-            Some((_, modifier)) => return Err(format!("modificador desconocido: {modifier}")),
+            Some((_, modifier)) => {
+                return Err(tr!(
+                    "modificador desconocido: {modifier}",
+                    "unknown modifier: {modifier}"
+                ));
+            }
         };
         let values = match wanted {
             Value::Array(items) => items.iter().map(value_text).collect::<Option<Vec<_>>>(),
             other => value_text(other).map(|v| vec![v]),
         }
         .filter(|v| !v.is_empty())
-        .ok_or_else(|| format!("valores no válidos en «{key}»"))?;
+        .ok_or_else(|| tr!("valores no válidos en «{key}»", "invalid values in «{key}»"))?;
         conditions.push(Condition {
             field: field.to_string(),
             op,
@@ -157,7 +223,10 @@ fn parse_rule(value: &Value) -> Result<Rule, String> {
         });
     }
     if conditions.is_empty() {
-        return Err("una regla vacía encajaría con todo".into());
+        return Err(tr!(
+            "una regla vacía encajaría con todo",
+            "an empty rule would match everything"
+        ));
     }
     Ok(Rule(conditions))
 }

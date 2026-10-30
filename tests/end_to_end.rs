@@ -1,45 +1,70 @@
-//! Runs the real binary: generates the demo telemetry and checks that the
-//! search finds the three injected chains, and only the exact one with the
-//! exact-sequence baseline.
+//! Runs the real binary on the demo telemetry: the search finds the injected
+//! chains (and the exact baseline only the exact one), each host is judged
+//! against its own routine, the results do not depend on the number of
+//! threads, and the demo, the English output and the HTML report work.
 
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::sync::OnceLock;
 
 use serde_json::Value;
 
 const BIN: &str = env!("CARGO_BIN_EXE_ttpblast");
 
-fn run(args: &[&str]) -> Vec<u8> {
-    let out = Command::new(BIN)
+fn output(args: &[&str]) -> Output {
+    Command::new(BIN)
         .args(args)
         .output()
-        .expect("ttpblast arranca");
+        .expect("ttpblast arranca")
+}
+
+fn run(args: &[&str]) -> String {
+    let out = output(args);
     assert!(
         out.status.success(),
         "ttpblast {args:?} falló:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    out.stdout
+    String::from_utf8(out.stdout).expect("salida UTF-8")
 }
 
+/// Inside target/, where cargo keeps scratch space for integration tests.
 fn temp_dir(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("ttpblast-{name}-{}", std::process::id()))
+    Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("ttpblast-{name}-{}", std::process::id()))
+}
+
+/// The demo telemetry, generated once for all the tests that search it.
+fn demo_events() -> &'static str {
+    static EVENTS: OnceLock<String> = OnceLock::new();
+    EVENTS.get_or_init(|| {
+        let dir = temp_dir("e2e");
+        run(&["synth", "--out", dir.to_str().unwrap()]);
+        dir.join("events.ndjson").to_str().unwrap().to_string()
+    })
+}
+
+fn search_json(query: &str, extra: &[&str]) -> Value {
+    let mut args = vec![
+        "search",
+        "--query",
+        query,
+        "--events",
+        demo_events(),
+        "--json",
+    ];
+    args.extend(extra);
+    serde_json::from_str(&run(&args)).expect("salida JSON válida")
+}
+
+fn host<'a>(hits: &'a [Value], name: &str) -> &'a Value {
+    hits.iter()
+        .find(|h| h["host"] == name)
+        .unwrap_or_else(|| panic!("{name} no aparece"))
 }
 
 #[test]
 fn demo_finds_the_three_injected_chains() {
-    let dir = temp_dir("e2e");
-    let events = dir.join("events.ndjson");
-    run(&["synth", "--out", dir.to_str().unwrap()]);
-    let out = run(&[
-        "search",
-        "--query",
-        "queries/phishing-lateral.txt",
-        "--events",
-        events.to_str().unwrap(),
-        "--json",
-    ]);
-    let result: Value = serde_json::from_slice(&out).expect("salida JSON válida");
+    let result = search_json("queries/phishing-lateral.txt", &[]);
     let hits = result["hits"].as_array().expect("lista de hits");
 
     let top: Vec<&str> = hits
@@ -47,20 +72,22 @@ fn demo_finds_the_three_injected_chains() {
         .take(3)
         .map(|h| h["host"].as_str().unwrap())
         .collect();
-    for host in ["ws-legal-02", "ws-finance-04", "ws-sales-03"] {
+    for name in ["ws-legal-02", "ws-finance-04", "ws-sales-03"] {
         assert!(
-            top.contains(&host),
-            "{host} no está entre los 3 primeros: {top:?}"
+            top.contains(&name),
+            "{name} no está entre los 3 primeros: {top:?}"
         );
-        let hit = hits.iter().find(|h| h["host"] == host).unwrap();
-        assert!(
-            hit["evalue"].as_f64().unwrap() < 0.05,
-            "{host}: {}",
-            hit["evalue"]
-        );
+        let evalue = host(hits, name)["evalue"].as_f64().unwrap();
+        assert!(evalue < 0.05, "{name}: {evalue}");
     }
     // What comes next is noise: no better than chance.
     assert!(hits[3]["evalue"].as_f64().unwrap() > 1.0, "{}", hits[3]);
+    assert_eq!(
+        result["summary"]["strong"].as_array().unwrap().len(),
+        3,
+        "{}",
+        result["summary"]
+    );
 
     let baseline: Vec<&str> = result["baseline"]["matches"]
         .as_array()
@@ -69,22 +96,121 @@ fn demo_finds_the_three_injected_chains() {
         .map(|m| m["host"].as_str().unwrap())
         .collect();
     assert_eq!(baseline, ["ws-legal-02"]);
+}
 
+#[test]
+fn each_host_is_judged_against_its_own_routine() {
+    // srv-backup-01 compresses and uploads every night: the last two steps
+    // of the query are routine there, however well they align.
+    let result = search_json(
+        "queries/exfiltracion.txt",
+        &["--evalue", "1e9", "--max-hits", "100"],
+    );
+    let hits = result["hits"].as_array().unwrap();
+    assert_eq!(hits[0]["host"], "ws-hr-02", "{}", hits[0]);
+    assert!(hits[0]["evalue"].as_f64().unwrap() < 0.05, "{}", hits[0]);
+    let backup = host(hits, "srv-backup-01");
+    assert!(backup["evalue"].as_f64().unwrap() > 1.0, "{backup}");
+    assert!(backup["score"].as_i64().unwrap() >= 10, "{backup}");
+}
+
+#[test]
+fn same_results_with_one_or_many_threads() {
+    let mut one = search_json("queries/phishing-lateral.txt", &["--threads", "1"]);
+    let mut many = search_json("queries/phishing-lateral.txt", &["--threads", "8"]);
+    assert_eq!(one["hits"], many["hits"]);
+    one["settings"] = Value::Null;
+    many["settings"] = Value::Null;
+    assert_eq!(one, many);
+}
+
+#[test]
+fn english_output_and_html_report() {
+    let dir = temp_dir("html");
+    std::fs::create_dir_all(&dir).unwrap();
+    let report = dir.join("report.html");
+    let text = run(&[
+        "search",
+        "--query",
+        "queries/phishing-lateral.txt",
+        "--events",
+        demo_events(),
+        "--details",
+        "1",
+        "--lang",
+        "en",
+        "--html",
+        report.to_str().unwrap(),
+    ]);
+    for expected in [
+        "Hits with E ≤ 10",
+        "Verdict",
+        "far beyond chance",
+        "this chain",
+    ] {
+        assert!(text.contains(expected), "falta «{expected}» en:\n{text}");
+    }
+    assert!(!text.contains('\x1b'), "sin colores fuera de una terminal");
+
+    let html = std::fs::read_to_string(&report).unwrap();
+    let data = embedded_json(&html);
+    assert_eq!(data["lang"], "en");
+    assert_eq!(data["hits"][0]["host"], "ws-legal-02");
+    assert!(
+        data["hits"][0]["null"]["histogram"]
+            .as_array()
+            .unwrap()
+            .len()
+            > 3
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The JSON inside the report's data block.
+fn embedded_json(html: &str) -> Value {
+    let start = html.find("id=\"ttpblast-data\">").expect("bloque de datos") + 19;
+    let end = start + html[start..].find("</script>").unwrap();
+    serde_json::from_str(&html[start..end]).expect("JSON del informe")
+}
+
+#[test]
+fn demo_grades_itself_against_the_truth() {
+    let dir = temp_dir("demo");
+    let text = run(&[
+        "demo",
+        "--out",
+        dir.to_str().unwrap(),
+        "--details",
+        "0",
+        "--lang",
+        "es",
+    ]);
+    assert!(text.contains("4 de 4 cadenas"), "{text}");
+    assert!(text.contains("Fíjate en srv-backup-01"), "{text}");
+    for report in ["informe-phishing-lateral.html", "informe-exfiltracion.html"] {
+        assert!(Path::new(&dir).join(report).exists(), "falta {report}");
+    }
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn reports_missing_files_as_errors() {
-    let out = Command::new(BIN)
-        .args([
-            "search",
-            "--query",
-            "queries/phishing-lateral.txt",
-            "--events",
-            "no-existe.ndjson",
-        ])
-        .output()
-        .unwrap();
+    let out = output(&[
+        "search",
+        "--query",
+        "queries/phishing-lateral.txt",
+        "--events",
+        "no-existe.ndjson",
+    ]);
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("no-existe.ndjson"));
+}
+
+#[test]
+fn typos_get_a_suggestion() {
+    let out = output(&["serch", "--lang", "en"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("did you mean «search»"));
+    let out = output(&["search", "--evalu", "3", "--lang", "es"]);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--evalue"));
 }
