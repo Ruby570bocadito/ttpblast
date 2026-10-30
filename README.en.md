@@ -18,7 +18,8 @@
 **Status: research demo (v0.2).** It works end to end on synthetic telemetry, in English
 and Spanish, with an HTML report to share. The scoring matrix is a first version (not
 learned from data), calibration on real data is still to be shown, and we already know how
-to hide a chain from it: read [Limitations](#limitations) before trusting an E-value.
+to hide a chain from it: slip ordinary commands between its steps, which `--mask` counters
+on the synthetic data. Read [Limitations](#limitations) before trusting an E-value.
 
 ## Try it in 30 seconds
 
@@ -73,6 +74,7 @@ ttpblast demo                                      # guided demo: synthetic tele
 ttpblast search --query queries/phishing-lateral.txt --events data/demo/events.ndjson
 ttpblast search ... --html report.html             # visual report: one file, no external connections
 ttpblast search ... --json                         # for scripts and other tools
+ttpblast search ... --mask                         # skip each host's routine: against padding
 ttpblast search ... --lang es                      # in Spanish (also TTPBLAST_LANG=es)
 ttpblast encode --events data/demo/events.ndjson --host ws-finance-04   # a host's "genome"
 ttpblast alphabet                                  # the 31 symbols
@@ -202,6 +204,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
      resemblances are no surprise; on a sales laptop, they are.
    - The output shows the fit diagnostics (if the tail does not look exponential, it is
      flagged with ⚠) and, in two lines, where the chain lands among the shuffles.
+6. **Routine mask (optional, `--mask`)**, against padding between steps, the way SEG and
+   DUST mask low-complexity regions in BLAST. For each host and each query, routine is what
+   the query does not use plus the query's techniques that the host repeats (2 times or
+   more, `--routine`): a step of a chain shows up once; a technique that repeats is the
+   host's habit, or padding.
+   - Routine is skipped for free, without opening a gap or breaking a run of extra steps,
+     but it can still be paired with a query step (cmd for PowerShell still counts).
+   - The routine that the alignment skips inside the chain is left out of that host's
+     shuffles too. Otherwise it would lengthen the chain's stretch, and the shuffles, which
+     fill it at random, would resemble the query more.
+   - A host whose best alignment skips nothing is judged as without `--mask`: skipping for
+     free would only raise its shuffles' scores.
 
 ## Results on synthetic data
 
@@ -218,10 +232,11 @@ ground truth for evaluation, and `ttpblast demo` grades itself with it.
 | `exfiltración` (exfiltration) | exfiltracion | nothing, but the backup server does the last two steps every night | yes | rank 1, E = 6.4·10⁻³ |
 
 **Calibration** (`python experiments/calibracion.py --seeds 20`, and `--extra="--block 1"`
-for the other rows): 20 datasets with different seeds, both demo queries, 36 benign hosts
-(without any chain) in each search; 1,440 searches of benign hosts in all. With
-well-calibrated E-values, ~36 would get E ≤ 1 and ~3.6 would get E ≤ 0.1. Each chain cell is
-its median E and, in brackets, in how many of the 20 datasets it gets E ≤ 0.01.
+or `--extra="--mask"` for the other rows): 20 datasets with different seeds, both demo
+queries, 36 benign hosts (without any chain) in each search; 1,440 searches of benign hosts
+in all. With well-calibrated E-values, ~36 would get E ≤ 1 and ~3.6 would get E ≤ 0.1. Each
+chain cell is its median E and, in brackets, in how many of the 20 datasets it gets
+E ≤ 0.01.
 
 | Shuffling | Null model | Benign E ≤ 1 | Benign E ≤ 0.1 | Exact | Variant | Partial | Exfiltration |
 |---|---|---|---|---|---|---|---|
@@ -229,6 +244,10 @@ its median E and, in brackets, in how many of the 20 datasets it gets E ≤ 0.01
 | blocks of 3 (default) | `gumbel` | 30 | 1 | 4.0·10⁻⁹ (20) | 2.0·10⁻⁵ (19) | 2.0·10⁻³ (16) | 7.4·10⁻⁷ (20) |
 | blocks of 1 | `cola`, tail | 13 | 0 | 7.1·10⁻⁶ (20) | 1.1·10⁻³ (16) | 2.1·10⁻² (5) | 5.3·10⁻⁴ (19) |
 | blocks of 1 | `gumbel` | 19 | 5 | 1.9·10⁻⁸ (20) | 5.4·10⁻⁵ (20) | 8.9·10⁻⁴ (18) | 3.3·10⁻⁸ (20) |
+| blocks of 3, `--mask` | `cola`, tail | 17 | 1 | 1.4·10⁻⁶ (20) | 9.1·10⁻⁴ (20) | 2.1·10⁻² (8) | 2.0·10⁻³ (18) |
+| blocks of 3, `--mask` | `gumbel` | 36 | 3 | 4.0·10⁻⁹ (20) | 7.4·10⁻⁵ (19) | 2.0·10⁻³ (16) | 7.4·10⁻⁷ (20) |
+| blocks of 1, `--mask` | `cola`, tail | 16 | 1 | 7.1·10⁻⁶ (20) | 1.2·10⁻³ (20) | 2.1·10⁻² (5) | 5.3·10⁻⁴ (19) |
+| blocks of 1, `--mask` | `gumbel` | 22 | 7 | 1.9·10⁻⁸ (20) | 1.2·10⁻⁴ (20) | 8.9·10⁻⁴ (18) | 3.3·10⁻⁸ (20) |
 
 - With the default model, the four chains are in the top 3 in all 20 datasets (the
   exfiltration always first); with the Gumbel, in the top 4.
@@ -239,6 +258,11 @@ its median E and, in brackets, in how many of the 20 datasets it gets E ≤ 0.01
     shape of the observed tail. The full Gumbel does not model the "floor" that appears when
     a rare symbol is in every shuffle.
   - This choice must be revisited with real telemetry.
+- **With `--mask` there are a few more false alarms** (17 against 12 with the tail; 36
+  against 30 with the Gumbel, right at the calibrated level), because of how it picks its
+  null model (see [What it takes to hide](#what-it-takes-to-hide)). Chains without padding
+  come out the same, and the variant a little better. The Gumbel with blocks of 1 overshoots
+  in the tail, with the mask (7 with E ≤ 0.1 out of ~3.6) or without it (5).
 - **What was tried and did not work:**
   - *Blocks of 3 without breaking up the aligned region.* The chain stays, in pieces, inside
     its own null model and gets penalised: the exact chain's median E rose to 4·10⁻² with
@@ -266,29 +290,67 @@ its median E and, in brackets, in how many of the 20 datasets it gets E ≤ 0.01
 Someone who knows the method can slip ordinary commands (cmd, schtasks, ipconfig…) between
 the steps of their chain. `ttpblast synth --padding N` puts N between every two steps of
 each injected chain, and [`experiments/evasion.py`](experiments/evasion.py) measures what
-is left: 20 seeds, 80 chains per row.
+is left (`--seeds 20 --gaps 4/1,4/1:0/0 --mask`): 20 seeds, 80 chains per row.
 
-| Padding between steps | Default costs: chains with E ≤ 0.01 | Median E of the exact chain | Free extra steps (`--extra-open 0`) | Median E of the exact chain |
-|---|---|---|---|---|
-| 0 | 65/80 | 1.4·10⁻⁶ | 58/80 | 9.0·10⁻⁵ |
-| 1 | **0/80** | 0.89 | 18/80 | 4.8·10⁻³ |
-| 2 | 0/80 | 20 | 5/80 | 1.6·10⁻² |
-| 3 | 0/80 | 26 | 2/80 | 3.5·10⁻² |
-| 4 | 0/80 | 29 | 0/80 | 7.0·10⁻² |
+| Padding between steps | Default costs: chains with E ≤ 0.01 | Median E of the exact chain | Free extra steps (`--extra-open 0`) | Median E of the exact chain | **With `--mask`** | Median E of the exact chain |
+|---|---|---|---|---|---|---|
+| 0 | 65/80 | 1.4·10⁻⁶ | 58/80 | 9.0·10⁻⁵ | **66/80** | 1.4·10⁻⁶ |
+| 1 | **0/80** | 0.89 | 18/80 | 4.8·10⁻³ | **60/80** | 9.1·10⁻⁵ |
+| 2 | 0/80 | 20 | 5/80 | 1.6·10⁻² | **60/80** | 9.1·10⁻⁵ |
+| 3 | 0/80 | 26 | 2/80 | 3.5·10⁻² | **61/80** | 9.1·10⁻⁵ |
+| 4 | 0/80 | 29 | 0/80 | 7.0·10⁻² | **60/80** | 1.1·10⁻⁴ |
 
-- **One command between every two steps is enough to hide all four chains.** With the
-  default costs, each one opens a gap (−4) or pairs badly, and the score sinks: in the demo,
-  the exact chain drops from 45 to 18.
+- **Without `--mask`, one command between every two steps is enough to hide all four
+  chains.** With the default costs, each one opens a gap (−4) or pairs badly, and the score
+  sinks: in the demo, the exact chain drops from 45 to 18. False alarms do not change (0.34
+  benign hosts with E ≤ 1 out of 40, against ~1 if calibrated): padding only touches the
+  attacked hosts.
 - Making extra steps cheaper helps little and costs detection without padding (58/80
   against 65/80). With free extra steps the score holds, but chance's score rises: the
   chain's window is longer and, in the shuffles, a long window finds the query's symbols in
   a similar order more easily.
-- False alarms do not change (0.34 benign hosts with E ≤ 1 out of 40, against ~1 if
-  calibrated): padding only touches the attacked hosts.
-- It is the same problem as low-complexity regions in BLAST, which are masked (SEG, DUST)
-  before aligning. The equivalent here would be masking each host's routine; it is on the
-  [roadmap](#roadmap). Until then, `ttpblast` is for chains that vary without trying to hide
-  from it, not for an adversary who knows it.
+- **With `--mask`, padding no longer hides them: 60 out of 80 with 1 to 4 commands between
+  steps**, nearly as without padding. It is the equivalent of masking low-complexity regions
+  in BLAST (SEG, DUST): each host's routine is skipped for free (point 6 of
+  [How it works](#how-it-works)). In the demo with two commands between steps, the exact
+  chain scores 45 again, with 16 routine events skipped, and its E goes from 5.1 to
+  4.9·10⁻⁴.
+  - By scenario, with padding: the exact chain in all 20 seeds, the variant in 19 or 20,
+    the exfiltration in 15 and the partial one in 5 or 6 (without padding: 20, 19, 18 and
+    8).
+  - Without padding nothing is lost (66/80 against 65/80): a compact chain skips nothing and
+    is judged as without the mask. The variant gains a little, because its two extra steps
+    are routine.
+  - **The price, in false alarms:** 0.46–0.49 benign hosts with E ≤ 1 out of 40, against
+    0.34 without the mask; in the calibration experiment, 17 out of 1,440 against 12 (~36 if
+    calibrated). They come from choosing the null model after aligning: a host that skips no
+    routine is judged without the mask, which gives smaller E-values. In the worst case that
+    could double the false alarms; measured, they go up by 40 % and stay below the
+    calibrated level.
+  - With routine free, an alignment can span hours of activity: in the demo with padding, an
+    admin gets E = 0.88 with an alignment 2.1 h long. Look at the duration before taking a
+    hit at face value.
+- **What it does not fix.** Changing the order of the steps, spacing them more than an hour
+  apart (`--max-gap`) or spreading them across hosts still hides the chain, with or without
+  the mask. And the synthetic padding comes from eight fixed commands: real telemetry has to
+  show how much routine actually slips between the steps of an intrusion. That is why, for
+  now, `--mask` is an option and not the default.
+
+**What was tried and did not work** (the same 20 seeds; chains with E ≤ 0.01 out of 80,
+with 0/1/2/3/4 padding commands between steps):
+
+| Variant | Found | Why it fails |
+|---|---|---|
+| Delete from the host, before aligning, what it repeats 3 times or more | 9/1/0/4/5 | It takes chain steps with it (PowerShell, the web connection and even `UEX`, because printing from Word is one too) and the variant's substitutions. And what is left is so full of query symbols that the shuffles reproduce the query easily. |
+| The same, never deleting the query's techniques | 35/8/8/16/11 | The same problem in the shuffles, and the variant loses its substitutions all the same. |
+| Skip for free (without deleting) what the host repeats 3 times or more | 61/9/5/7/3 | 5 of the 8 padding commands (ipconfig, tasklist, wscript, mstsc, 7z) show up once every two weeks on a workstation: for that host they are not routine, however ordinary they are on the network. |
+| Skip for free everything that is not in the query | 61/32/15/8/4 | Padding lengthens the chain's stretch, and the shuffles, which fill it at random, put more query symbols in it. |
+| … with routine kept in place in the shuffles | 32/19/12/10/6 | The shuffles only move query symbols: the chain competes against copies of itself. |
+| … leaving the skipped routine out of the shuffles | 62/51/34/25/19 | Padding with the query's own techniques (PowerShell, 7z) still costs. |
+| `--mask` always judging with the masked null model | 60 without padding; the same with it | When there is nothing to skip, skipping for free only raises the shuffles' tail: on the demo's exfiltration, λ drops from 0.44 to 0.40 and E doubles when extrapolated. |
+| Leave the skipped routine out, then score with the usual costs | 66/65/63/61/64 | 45 to 49 benign hosts with E ≤ 1, more than the ~36 calibrated: the shuffles do not see the advantage of choosing what to leave out. |
+| Search with and without the mask and keep the better one (E × 2) | 63/54/52/51/53 | Paying for two tests costs more than it gains. |
+| `--routine` 3, 4 or 6 instead of 2 | 60/57/55/57, 58/54/52/54 and 58/51/47/47 (padding 1–4) | The higher it is, the more padding with query techniques still costs. |
 
 ## Honest comparison
 
@@ -296,7 +358,7 @@ is left: 20 seeds, 80 chains per row.
 |---|---|---|
 | Variants (substituted technique, extra or missing step) | yes | no |
 | Is this resemblance unusual on this host? | per-host E-value | not answered |
-| Deliberate padding between steps | hides a chain with a single command | unaffected if it fits in `maxspan` |
+| Deliberate padding between steps | without `--mask`, hides a chain with a single command; with `--mask`, 60 of 80 chains still come out (synthetic data) | unaffected if it fits in `maxspan` |
 | Cost | alignment + 200 shuffles per host (~0.15 s in the demo, on every core) | very low |
 | Maturity | research demo | mature production tools |
 | Explanation | step-by-step alignment with its events and an HTML report | matching events |
@@ -308,8 +370,11 @@ prioritising.
 
 - **Only tested on synthetic data.** The number one open question is whether E-values stay
   calibrated on real telemetry.
-- **Padding hides a chain.** One ordinary command between every two steps is enough for a
-  chain not to stand out (see [What it takes to hide](#what-it-takes-to-hide)).
+- **Without `--mask`, padding hides a chain.** One ordinary command between every two steps
+  is enough for a chain not to stand out. `--mask` counters it on the synthetic data (60 of
+  80 chains with padding, against 0) at the cost of a few more false alarms, and it does not
+  withstand reordering the steps or spreading them over time or across hosts (see
+  [What it takes to hide](#what-it-takes-to-hide)).
 - **The scoring matrix is hand-made:** symbol rarity plus a rule by tactic. The idea is to
   learn it from real chains, the way BLOSUM was learned from protein blocks.
 - **No command lines.** The rules only see process names and paths: `net.exe` counts as
@@ -336,17 +401,18 @@ prioritising.
 1. Test the alphabet on public datasets of simulated attacks (OTRF's Security Datasets,
    which are already read): do two runs of the same scenario align better than with the
    noise?
-2. **Mask each host's routine** before aligning, as SEG and DUST do with low-complexity
-   regions, and measure the cost of evasion again.
+2. **Decide whether `--mask` becomes the default**, on real telemetry: how much routine
+   slips between the steps of a real intrusion, and how many false alarms it adds.
 3. Learn the substitution matrix from real chains.
 4. Calibration on real telemetry, and choosing the null model: tail or Gumbel, block size,
    similar hosts as a reference.
 5. More input sources: EVTX files directly and NDJSON output of open-source EDRs.
 6. A seed (k-mer) index for large volumes.
-7. Time-dependent gaps, and chains across hosts.
+7. Time-dependent gaps, chains across hosts and steps in another order.
 
 Done in v0.2: measuring the cost of evasion (the result is above), reading Winlogbeat 6 and
-OTRF's flat layout. The details are in the [CHANGELOG](CHANGELOG.md).
+OTRF's flat layout. Done since, not yet released: masking each host's routine (`--mask`)
+and measuring that cost again. The details are in the [CHANGELOG](CHANGELOG.md).
 
 ## Formats
 
@@ -364,7 +430,8 @@ OTRF's flat layout. The details are in the [CHANGELOG](CHANGELOG.md).
   symbol that matches wins. Load another one with `--alphabet`.
 - **JSON output** (`--json`): the query, the telemetry, the settings, the verdict
   (`summary`), each hit with its alignment, its evidence and the histogram of its shuffles,
-  and the exact baseline.
+  and the exact baseline. With `--mask`, the routine an alignment skips shows up in it as
+  `"kind": "masked"` steps, and each hit says how many (`masked`).
 
 ## Contributing
 
