@@ -105,6 +105,8 @@ pub enum Step {
     Extra { t: usize },
     /// Query step `q` missing from the host.
     Missing { q: usize },
+    /// Host symbol `t` skipped for free: routine that `--mask` hides.
+    Masked { t: usize },
 }
 
 pub struct Alignment {
@@ -124,18 +126,26 @@ impl Alignment {
     pub fn shifted(mut self, offset: usize) -> Self {
         for step in &mut self.steps {
             match step {
-                Step::Pair { t, .. } | Step::Extra { t } => *t += offset,
+                Step::Pair { t, .. } | Step::Extra { t } | Step::Masked { t } => *t += offset,
                 Step::Missing { .. } => {}
             }
         }
         self
     }
 
+    /// Host positions skipped as masked routine, in order.
+    pub fn masked(&self) -> impl Iterator<Item = usize> + '_ {
+        self.steps.iter().filter_map(|s| match *s {
+            Step::Masked { t } => Some(t),
+            _ => None,
+        })
+    }
+
     /// Host positions covered, first to last.
     pub fn host_span(&self) -> (usize, usize) {
         let positions = || {
             self.steps.iter().filter_map(|s| match *s {
-                Step::Pair { t, .. } | Step::Extra { t } => Some(t),
+                Step::Pair { t, .. } | Step::Extra { t } | Step::Masked { t } => Some(t),
                 Step::Missing { .. } => None,
             })
         };
@@ -157,7 +167,11 @@ struct Matrices {
     end: (usize, usize),
 }
 
-fn fill(query: &[usize], target: &[usize], sc: &Scoring) -> Matrices {
+/// `masked`, indexed by symbol (empty: nothing), marks the routine that
+/// `--mask` hides: a masked host symbol costs nothing to skip, and does not
+/// break a run of extra steps either, but it can still be paired with a query
+/// step (as a substitution, say).
+fn fill(query: &[usize], target: &[usize], sc: &Scoring, masked: &[bool]) -> Matrices {
     let cols = target.len() + 1;
     let size = (query.len() + 1) * cols;
     let (mut h, mut e, mut f) = (vec![0; size], vec![NEG; size], vec![NEG; size]);
@@ -166,10 +180,15 @@ fn fill(query: &[usize], target: &[usize], sc: &Scoring) -> Matrices {
         for j in 1..=target.len() {
             let k = i * cols + j;
             // e: gap in the query (extra host symbol); f: query step missing.
-            e[k] = (h[k - 1] - sc.extra_open).max(e[k - 1] - sc.extra_extend);
             f[k] = (h[k - cols] - sc.gap_open).max(f[k - cols] - sc.gap_extend);
             let diagonal = h[k - cols - 1] + sc.score(query[i - 1], target[j - 1]);
-            h[k] = 0.max(diagonal).max(e[k]).max(f[k]);
+            h[k] = if is_masked(masked, target[j - 1]) {
+                e[k] = e[k - 1];
+                0.max(diagonal).max(h[k - 1]).max(f[k])
+            } else {
+                e[k] = (h[k - 1] - sc.extra_open).max(e[k - 1] - sc.extra_extend);
+                0.max(diagonal).max(e[k]).max(f[k])
+            };
             if h[k] > best {
                 best = h[k];
                 end = (i, j);
@@ -186,20 +205,29 @@ fn fill(query: &[usize], target: &[usize], sc: &Scoring) -> Matrices {
     }
 }
 
+fn is_masked(masked: &[bool], symbol: usize) -> bool {
+    masked.get(symbol).copied().unwrap_or(false)
+}
+
 /// Best local alignment score only (used for the shuffled null model).
-pub fn best_score(query: &[usize], target: &[usize], sc: &Scoring) -> i32 {
-    fill(query, target, sc).best
+pub fn best_score(query: &[usize], target: &[usize], sc: &Scoring, masked: &[bool]) -> i32 {
+    fill(query, target, sc, masked).best
 }
 
 /// Best local alignment with its traceback, or `None` if nothing scores > 0.
-pub fn align(query: &[usize], target: &[usize], sc: &Scoring) -> Option<Alignment> {
+pub fn align(
+    query: &[usize],
+    target: &[usize],
+    sc: &Scoring,
+    masked: &[bool],
+) -> Option<Alignment> {
     #[derive(PartialEq)]
     enum State {
         H,
         E,
         F,
     }
-    let m = fill(query, target, sc);
+    let m = fill(query, target, sc, masked);
     if m.best <= 0 {
         return None;
     }
@@ -217,11 +245,20 @@ pub fn align(query: &[usize], target: &[usize], sc: &Scoring) -> Option<Alignmen
                     steps.push(Step::Pair { q: i - 1, t: j - 1 });
                     i -= 1;
                     j -= 1;
+                } else if is_masked(masked, target[j - 1]) && m.h[k] == m.h[k - 1] {
+                    steps.push(Step::Masked { t: j - 1 });
+                    j -= 1;
                 } else if m.h[k] == m.e[k] {
                     state = State::E;
                 } else {
                     state = State::F;
                 }
+            }
+            // Inside a run of extra steps a masked symbol is carried over for
+            // free; the run opened on an ordinary one.
+            State::E if is_masked(masked, target[j - 1]) => {
+                steps.push(Step::Masked { t: j - 1 });
+                j -= 1;
             }
             State::E => {
                 steps.push(Step::Extra { t: j - 1 });
@@ -258,7 +295,7 @@ mod tests {
     #[test]
     fn exact_match_inside_noise() {
         let sc = scoring();
-        let aln = align(&[0, 2, 3], &[2, 2, 0, 2, 3, 1, 1], &sc).unwrap();
+        let aln = align(&[0, 2, 3], &[2, 2, 0, 2, 3, 1, 1], &sc, &[]).unwrap();
         assert_eq!(aln.score, 18);
         assert_eq!(
             aln.steps,
@@ -275,7 +312,7 @@ mod tests {
     fn substitution_within_tactic() {
         let sc = scoring();
         // Query 0,2,3 against host 1,2,3: 0 -> 1 is a same-tactic substitution.
-        let aln = align(&[0, 2, 3], &[1, 2, 3], &sc).unwrap();
+        let aln = align(&[0, 2, 3], &[1, 2, 3], &sc, &[]).unwrap();
         assert_eq!(aln.score, SAME_TACTIC + 5 + 8);
         assert_eq!(aln.pairs().count(), 3);
     }
@@ -284,7 +321,7 @@ mod tests {
     fn extra_step_opens_a_gap() {
         let sc = scoring();
         // Host has an extra symbol (1) between the query steps 2 and 3.
-        let aln = align(&[0, 2, 3], &[0, 2, 1, 3], &sc).unwrap();
+        let aln = align(&[0, 2, 3], &[0, 2, 1, 3], &sc, &[]).unwrap();
         assert_eq!(aln.score, 5 + 5 - GAP_OPEN + 8);
         assert!(aln.steps.contains(&Step::Extra { t: 2 }));
     }
@@ -292,7 +329,7 @@ mod tests {
     #[test]
     fn missing_step_opens_a_gap() {
         let sc = scoring();
-        let aln = align(&[0, 2, 3, 0], &[0, 3, 0], &sc).unwrap();
+        let aln = align(&[0, 2, 3, 0], &[0, 3, 0], &sc, &[]).unwrap();
         assert_eq!(aln.score, 5 - GAP_OPEN + 8 + 5);
         assert!(aln.steps.contains(&Step::Missing { q: 1 }));
     }
@@ -301,29 +338,86 @@ mod tests {
     fn extra_steps_can_cost_less_than_missing_ones() {
         // Three extra host symbols (2, 2, 2) between two query steps.
         let (query, host) = ([3, 3], [3, 2, 2, 2, 3]);
-        let affine = align(&query, &host, &scoring()).unwrap();
+        let affine = align(&query, &host, &scoring(), &[]).unwrap();
         assert_eq!(affine.score, 8 - EXTRA_OPEN - 2 * EXTRA_EXTEND + 8);
         let cheap = scoring().with_extras(1, 0);
-        let aln = align(&query, &host, &cheap).unwrap();
+        let aln = align(&query, &host, &cheap, &[]).unwrap();
         assert_eq!(aln.score, 8 - 1 + 8);
         assert_eq!(aln.steps.len(), 5);
-        assert_eq!(best_score(&query, &host, &cheap), aln.score);
+        assert_eq!(best_score(&query, &host, &cheap, &[]), aln.score);
         // Missing steps keep their own cost.
-        let aln = align(&[0, 2, 3, 0], &[0, 3, 0], &cheap).unwrap();
+        let aln = align(&[0, 2, 3, 0], &[0, 3, 0], &cheap, &[]).unwrap();
         assert_eq!(aln.score, 5 - GAP_OPEN + 8 + 5);
     }
 
     #[test]
     fn nothing_in_common() {
         let sc = scoring();
-        assert!(align(&[3, 3], &[2, 2, 2], &sc).is_none());
-        assert_eq!(best_score(&[3, 3], &[2, 2, 2], &sc), 0);
+        assert!(align(&[3, 3], &[2, 2, 2], &sc, &[]).is_none());
+        assert_eq!(best_score(&[3, 3], &[2, 2, 2], &sc, &[]), 0);
     }
 
     #[test]
     fn score_matches_alignment() {
         let sc = scoring();
         let (q, t) = ([0, 2, 3, 1, 2], [3, 1, 0, 2, 2, 3, 1, 0, 2]);
-        assert_eq!(best_score(&q, &t, &sc), align(&q, &t, &sc).unwrap().score);
+        assert_eq!(
+            best_score(&q, &t, &sc, &[]),
+            align(&q, &t, &sc, &[]).unwrap().score
+        );
+    }
+
+    // Symbol 2 is routine: masked.
+    const ROUTINE: [bool; 4] = [false, false, true, false];
+
+    #[test]
+    fn masked_symbols_are_skipped_for_free() {
+        let (query, host) = ([3, 3], [3, 2, 2, 2, 3]);
+        let aln = align(&query, &host, &scoring(), &ROUTINE).unwrap();
+        assert_eq!(aln.score, 8 + 8);
+        assert_eq!(aln.masked().collect::<Vec<_>>(), [1, 2, 3]);
+        assert_eq!(aln.host_span(), (0, 4));
+        assert_eq!(best_score(&query, &host, &scoring(), &ROUTINE), aln.score);
+    }
+
+    #[test]
+    fn masked_symbols_can_still_be_paired() {
+        // The query wants 2 between the 0 and the 3: the masked 2 still counts.
+        let aln = align(&[0, 2, 3], &[0, 2, 3], &scoring(), &ROUTINE).unwrap();
+        assert_eq!(aln.score, 5 + 5 + 8);
+        assert_eq!(aln.pairs().count(), 3);
+    }
+
+    #[test]
+    fn masked_symbols_do_not_break_a_run_of_extras() {
+        // 3, then the extras 1 2 1, then 3: one run of two ordinary extras with
+        // the masked 2 in the middle, so open once and extend once.
+        let (query, host) = ([3, 3], [3, 1, 2, 1, 3]);
+        let aln = align(&query, &host, &scoring(), &ROUTINE).unwrap();
+        assert_eq!(aln.score, 8 - EXTRA_OPEN - EXTRA_EXTEND + 8);
+        assert_eq!(
+            aln.steps,
+            vec![
+                Step::Pair { q: 0, t: 0 },
+                Step::Extra { t: 1 },
+                Step::Masked { t: 2 },
+                Step::Extra { t: 3 },
+                Step::Pair { q: 1, t: 4 },
+            ]
+        );
+        assert_eq!(best_score(&query, &host, &scoring(), &ROUTINE), aln.score);
+    }
+
+    #[test]
+    fn without_a_mask_nothing_changes() {
+        let sc = scoring();
+        let (q, t) = ([0, 2, 3, 1, 2], [3, 1, 0, 2, 2, 3, 1, 0, 2]);
+        let none = [false; 4];
+        let plain = align(&q, &t, &sc, &[]).unwrap();
+        let unmasked = align(&q, &t, &sc, &none).unwrap();
+        assert_eq!(
+            (plain.score, &plain.steps),
+            (unmasked.score, &unmasked.steps)
+        );
     }
 }
