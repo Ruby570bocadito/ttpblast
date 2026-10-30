@@ -36,7 +36,7 @@ const COMMANDS: [&str; 7] = [
 ];
 
 /// Options every search takes, from `search` and from `demo`.
-const SEARCH_SETTINGS: [&str; 14] = [
+const SEARCH_SETTINGS: [&str; 15] = [
     "alphabet",
     "shuffles",
     "block",
@@ -49,6 +49,7 @@ const SEARCH_SETTINGS: [&str; 14] = [
     "gap-extend",
     "extra-open",
     "extra-extend",
+    "routine",
     "null",
     "threads",
 ];
@@ -116,7 +117,12 @@ fn run(mut args: Vec<String>) -> Result<(), String> {
 fn cmd_search(rest: &[String]) -> Result<(), String> {
     let mut with_value = vec!["query", "events", "seed", "html"];
     with_value.extend(SEARCH_SETTINGS);
-    let flags = Flags::parse("search", rest, &with_value, &["no-baseline", "json"])?;
+    let flags = Flags::parse(
+        "search",
+        rest,
+        &with_value,
+        &["no-baseline", "json", "mask"],
+    )?;
     let path = flags.required("query")?;
     let text = std::fs::read_to_string(path)
         .map_err(|e| tr!("no se puede leer {path}: {e}", "cannot read {path}: {e}"))?;
@@ -146,6 +152,8 @@ fn search_settings(flags: &Flags, base: search::Options) -> Result<search::Optio
         gap_extend: flags.number("gap-extend", base.gap_extend)?,
         extra_open: flags.number("extra-open", base.extra_open)?,
         extra_extend: flags.number("extra-extend", base.extra_extend)?,
+        mask: flags.has("mask"),
+        routine: flags.number("routine", base.routine)?,
         null_model: match flags.text("null") {
             Some(model) => search::NullModel::parse(model)?,
             None => base.null_model,
@@ -158,7 +166,7 @@ fn search_settings(flags: &Flags, base: search::Options) -> Result<search::Optio
 fn cmd_hunt(rest: &[String]) -> Result<(), String> {
     let mut with_value = vec!["events", "queries", "html", "seed"];
     with_value.extend(SEARCH_SETTINGS);
-    let flags = Flags::parse("hunt", rest, &with_value, &["json", "no-baseline"])?;
+    let flags = Flags::parse("hunt", rest, &with_value, &["json", "no-baseline", "mask"])?;
     let events = flags.required("events")?;
     let mut search = search_settings(&flags, search::Options::new("", "", events))?;
     search.seed = flags.number("seed", search::SEED)?;
@@ -174,7 +182,12 @@ fn cmd_hunt(rest: &[String]) -> Result<(), String> {
 fn cmd_demo(rest: &[String]) -> Result<(), String> {
     let mut with_value = vec!["out", "days", "seed", "padding"];
     with_value.extend(SEARCH_SETTINGS);
-    let flags = Flags::parse("demo", rest, &with_value, &["no-html", "no-baseline"])?;
+    let flags = Flags::parse(
+        "demo",
+        rest,
+        &with_value,
+        &["no-html", "no-baseline", "mask"],
+    )?;
     demo::run(&demo::Options {
         synth: synth_options(&flags)?,
         html: !flags.has("no-html"),
@@ -490,6 +503,11 @@ fn command_help(command: &str) -> Result<(), String> {
   --gap-extend N        coste de cada otro paso que falta seguido ({})
   --extra-open N        coste de un paso de más en el host ({})
   --extra-extend N      coste de cada otro paso de más seguido ({})
+  --mask                enmascara la rutina de cada host: lo que no es de la
+                        consulta y sus técnicas que el host repite se saltan
+                        gratis (contra el relleno entre pasos)
+  --routine N           con --mask, cuántas veces tiene que repetir un host una
+                        técnica de la consulta para que sea rutina allí ({})
 
 {}
   --shuffles N          secuencias barajadas por host para calibrar ({})
@@ -513,6 +531,7 @@ fn command_help(command: &str) -> Result<(), String> {
             align::GAP_EXTEND,
             align::EXTRA_OPEN,
             align::EXTRA_EXTEND,
+            search::ROUTINE,
             heading("Significación"),
             search::SHUFFLES,
             search::BLOCK,
@@ -546,6 +565,11 @@ fn command_help(command: &str) -> Result<(), String> {
   --gap-extend N        cost of each further missing step in a row ({})
   --extra-open N        cost of an extra step on the host ({})
   --extra-extend N      cost of each further extra step in a row ({})
+  --mask                mask each host's routine: what is not in the query, and
+                        its techniques the host repeats, are skipped for free
+                        (against padding between steps)
+  --routine N           with --mask, how many times a host must repeat a query
+                        technique for it to be routine there ({})
 
 {}
   --shuffles N          shuffled sequences per host to calibrate ({})
@@ -569,6 +593,7 @@ fn command_help(command: &str) -> Result<(), String> {
             align::GAP_EXTEND,
             align::EXTRA_OPEN,
             align::EXTRA_EXTEND,
+            search::ROUTINE,
             heading("Significance"),
             search::SHUFFLES,
             search::BLOCK,
@@ -590,7 +615,7 @@ señalan varias consultas salen aparte: es lo primero que conviene mirar.
   --html CARPETA       además, un informe HTML por consulta en esa carpeta
   --json               resultados en JSON, para scripts y otras herramientas
   --shuffles N, --block N, --null MODELO, --max-gap SEG, --gap-open N,
-  --extra-open N, --seed N, --threads N…: como en `ttpblast search`
+  --extra-open N, --mask, --seed N, --threads N…: como en `ttpblast search`
 ",
             title("toda la biblioteca de consultas de una vez"),
             heading("Uso"),
@@ -613,7 +638,7 @@ at get their own line: that is where to look first.
   --html FOLDER        also one HTML report per query in that folder
   --json               results as JSON, for scripts and other tools
   --shuffles N, --block N, --null MODEL, --max-gap SECS, --gap-open N,
-  --extra-open N, --seed N, --threads N…: as in `ttpblast search`
+  --extra-open N, --mask, --seed N, --threads N…: as in `ttpblast search`
 ",
             title("every query in the library at once"),
             heading("Usage"),
@@ -635,9 +660,12 @@ encontrado con la verdad.
   --seed N           semilla de la telemetría ({})
   --padding N        comandos de relleno entre cada dos pasos de cada cadena,
                      para ver cuánto cuesta esconderla (0)
+  --mask             enmascara la rutina de cada host, para ver a través del
+                     relleno
   --no-html          sin informes HTML
   --details N, --shuffles N, --block N, --null MODELO, --max-gap SEG,
-  --gap-open N, --extra-open N, --threads N…: como en `ttpblast search`
+  --gap-open N, --extra-open N, --routine N, --threads N…: como en
+  `ttpblast search`
 ",
             title("la demo guiada"),
             heading("Uso"),
@@ -661,9 +689,11 @@ found with the truth.
   --seed N           telemetry seed ({})
   --padding N        padding commands between every two steps of each chain,
                      to see how much it takes to hide it (0)
+  --mask             mask each host's routine, to see through the padding
   --no-html          no HTML reports
   --details N, --shuffles N, --block N, --null MODEL, --max-gap SECS,
-  --gap-open N, --extra-open N, --threads N…: as in `ttpblast search`
+  --gap-open N, --extra-open N, --routine N, --threads N…: as in
+  `ttpblast search`
 ",
             title("the guided demo"),
             heading("Usage"),

@@ -6,11 +6,33 @@ menor puede romper algo; aquí se dice qué.
 
 ## [0.3.0] - sin publicar
 
-Para usarla con registros de verdad: lee `.evtx` sin nada más, entiende los registros
-propios de Windows cuando no hay Sysmon y pasa toda la biblioteca de consultas de una vez.
+Para usarla con registros de verdad y contra quien intenta esconderse: lee `.evtx` sin nada
+más, entiende los registros propios de Windows cuando no hay Sysmon, pasa toda la
+biblioteca de consultas de una vez, y con la máscara de rutina intercalar comandos
+corrientes entre los pasos de una cadena ya no basta para esconderla. Sin `--mask`, las
+búsquedas dan exactamente lo mismo que en la 0.2.0.
 
 ### Añadido
 
+- **`--mask`** (en `search` y en `demo`): enmascara la rutina de cada host antes de alinear,
+  como SEG y DUST en BLAST. Para cada consulta, es rutina lo que la consulta no usa y las
+  técnicas de la consulta que el host repite (`--routine N`, 2 por defecto). La rutina se
+  salta gratis pero se puede seguir emparejando; la que el alineamiento se salta dentro de
+  la cadena sale también de los barajados; y un host cuyo mejor alineamiento no se salta
+  nada se juzga como sin máscara. Con 1 a 4 comandos de relleno entre pasos, 60 de 80
+  cadenas con E ≤ 0,01 (0 de 80 sin máscara); sin relleno, 66 (65). En la calibración, 17
+  hosts benignos de 1.440 con E ≤ 1, frente a 12 (~36 si estuviera calibrado).
+- La rutina saltada se ve en la salida: línea «Máscara» en la cabecera, `···` y cuántos
+  eventos en el alineamiento, «rutina» en las pruebas, y en el informe HTML (vista general,
+  alineamiento, cronología y pruebas). En JSON, `settings.mask`, `settings.routine`,
+  `telemetry.masked_events`, `masked` en cada resultado y pasos con `"kind": "masked"`.
+- `experiments/evasion.py --mask` mide cada coste con y sin máscara sobre la misma
+  telemetría.
+- La demo con `--padding` sugiere probar `--mask` cuando el relleno le esconde alguna
+  cadena.
+- README: qué se probó para la máscara y no funcionó (borrar la rutina, la rutina de cada
+  host sola, dejarla fija en los barajados, puntuar con los costes normales, combinar dos
+  búsquedas…), con sus cifras.
 - **Ficheros `.evtx`**, leídos directamente y sin dependencias: cabeceras, bloques,
   registros y el XML binario con sus plantillas y sustituciones. Da lo mismo que
   `Get-WinEvent` en 8.240 registros reales de cuatro registros de Windows (Application,
@@ -41,6 +63,11 @@ propios de Windows cuando no hay Sysmon y pasa toda la biblioteca de consultas d
 - Los recuentos de lo ignorado hablan de eventos ilegibles o sin host, no de «líneas».
 - Acciones de GitHub al día (checkout v7, upload-artifact v7, action-gh-release v3), que
   ya usan Node 24.
+
+### Corregido
+
+- La ayuda de `experiments/evasion.py` decía que los costes de `ttpblast` eran 4/1:1/0; son
+  4/1.
 
 ## [0.2.0] - 2026-10-30
 

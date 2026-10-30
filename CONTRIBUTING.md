@@ -7,8 +7,8 @@
    personales: el exportador de Sysmon ya deja fuera usuarios y líneas de comandos.
 2. **Consultas** nuevas para [`queries/`](queries/), con su historia.
 3. **Símbolos** para el alfabeto que cubran técnicas habituales en intrusiones.
-4. Ideas para la [hoja de ruta](README.md#hoja-de-ruta), sobre todo para enmascarar la
-   rutina de cada host y resistir el relleno.
+4. Ideas para la [hoja de ruta](README.md#hoja-de-ruta), sobre todo para resistir otras
+   formas de esconderse: pasos en otro orden, repartidos en el tiempo o entre hosts.
 
 *In English: issues and pull requests in English are just as welcome. The code comments are
 in English; user-facing text is in Spanish and English.*
@@ -89,7 +89,8 @@ README (en los dos idiomas):
 ```bash
 python experiments/calibracion.py --seeds 20
 python experiments/calibracion.py --seeds 20 --extra="--block 1" --work data/calibracion-b1
-python experiments/evasion.py --seeds 20 --gaps 4/1,4/1:0/0
+python experiments/calibracion.py --seeds 20 --extra="--mask" --work data/calibracion-mascara
+python experiments/evasion.py --seeds 20 --gaps 4/1,4/1:0/0 --mask
 ```
 
 Cuenta también lo que no funcionó: el README tiene una sección para eso, y es de las más

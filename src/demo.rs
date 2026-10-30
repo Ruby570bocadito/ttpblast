@@ -162,6 +162,15 @@ pub fn run(opts: &Options) -> Result<(), String> {
             i18n::decimal(ui::STRONG, 2)
         )
     );
+    if opts.synth.padding > 0 && !opts.search.mask && found < total {
+        let note = t(
+            "El relleno las esconde: cada comando intercalado abre un hueco. Prueba otra vez \
+             con --mask, que se salta gratis la rutina de cada host.",
+            "The padding hides them: each command slipped in opens a gap. Try again with \
+             --mask, which skips each host's routine for free.",
+        );
+        println!("{} {}", paint("→", Style::Brand), ui::wrap(note, 76, "  "));
+    }
 
     if opts.html {
         println!(
@@ -194,11 +203,16 @@ fn search_with(
     details: usize,
 ) -> Result<Summary, String> {
     let html = opts.html.then(|| report_path(&opts.synth.out, query));
+    let mask = match (opts.search.mask, opts.search.routine) {
+        (false, _) => String::new(),
+        (true, search::ROUTINE) => " --mask".to_string(),
+        (true, routine) => format!(" --mask --routine {routine}"),
+    };
     println!(
         "{}\n",
         paint(
             format!(
-                "$ ttpblast search --query {} --events {events}{}{}",
+                "$ ttpblast search --query {} --events {events}{mask}{}{}",
                 query.path,
                 if details == search::DETAILS {
                     String::new()
