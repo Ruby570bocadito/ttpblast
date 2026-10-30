@@ -4,6 +4,71 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 [SemVer](https://semver.org/lang/es/). Mientras la versión empiece por 0, cualquier versión
 menor puede romper algo; aquí se dice qué.
 
+## [0.3.0] - sin publicar
+
+Para usarla con registros de verdad y contra quien intenta esconderse: lee `.evtx` sin nada
+más, entiende los registros propios de Windows cuando no hay Sysmon, pasa toda la
+biblioteca de consultas de una vez, y con la máscara de rutina intercalar comandos
+corrientes entre los pasos de una cadena ya no basta para esconderla. Sin `--mask`, las
+búsquedas dan exactamente lo mismo que en la 0.2.0.
+
+### Añadido
+
+- **`--mask`** (en `search` y en `demo`): enmascara la rutina de cada host antes de alinear,
+  como SEG y DUST en BLAST. Para cada consulta, es rutina lo que la consulta no usa y las
+  técnicas de la consulta que el host repite (`--routine N`, 2 por defecto). La rutina se
+  salta gratis pero se puede seguir emparejando; la que el alineamiento se salta dentro de
+  la cadena sale también de los barajados; y un host cuyo mejor alineamiento no se salta
+  nada se juzga como sin máscara. Con 1 a 4 comandos de relleno entre pasos, 60 de 80
+  cadenas con E ≤ 0,01 (0 de 80 sin máscara); sin relleno, 66 (65). En la calibración, 17
+  hosts benignos de 1.440 con E ≤ 1, frente a 12 (~36 si estuviera calibrado).
+- La rutina saltada se ve en la salida: línea «Máscara» en la cabecera, `···` y cuántos
+  eventos en el alineamiento, «rutina» en las pruebas, y en el informe HTML (vista general,
+  alineamiento, cronología y pruebas). En JSON, `settings.mask`, `settings.routine`,
+  `telemetry.masked_events`, `masked` en cada resultado y pasos con `"kind": "masked"`.
+- `experiments/evasion.py --mask` mide cada coste con y sin máscara sobre la misma
+  telemetría.
+- La demo con `--padding` sugiere probar `--mask` cuando el relleno le esconde alguna
+  cadena.
+- README: qué se probó para la máscara y no funcionó (borrar la rutina, la rutina de cada
+  host sola, dejarla fija en los barajados, puntuar con los costes normales, combinar dos
+  búsquedas…), con sus cifras.
+- **Ficheros `.evtx`**, leídos directamente y sin dependencias: cabeceras, bloques,
+  registros y el XML binario con sus plantillas y sustituciones. Da lo mismo que
+  `Get-WinEvent` en 8.240 registros reales de cuatro registros de Windows (Application,
+  System y los dos de PowerShell). Un fichero dañado o manipulado no lo tumba: los registros
+  ilegibles se saltan y se cuentan, sin un solo pánico en 400 ficheros alterados al azar. Un
+  test que no corre por defecto compara el lector con Windows en cualquier `.evtx`.
+- **Registros de Windows sin Sysmon**: procesos creados (Seguridad 4688), valores del
+  registro escritos (4657), conexiones permitidas por el firewall (5156, solo salientes) y
+  servicios instalados (Sistema 7045), en `.evtx`, por Winlogbeat o en exportaciones planas.
+- **Carpetas como entrada**: `--events` lee todos los `.evtx`, `.ndjson`, `.jsonl` y
+  `.json` de una carpeta, por ejemplo los recogidos de varios equipos en un incidente.
+- **`ttpblast hunt`**: todas las consultas de la biblioteca (o de una carpeta) contra la
+  misma telemetría, leída una sola vez; un veredicto por consulta, los hosts que señalan
+  varias consultas en líneas aparte, `--json` para scripts y `--html CARPETA` con un informe
+  por consulta.
+- **5 consultas nuevas** (8 en total): `credenciales-rdp`, `psexec-destino`,
+  `lolbins-persistencia`, `ntds-robo` y `acceso-remoto`. La biblioteca va dentro del
+  binario.
+- Laboratorio de Sysmon: comprueba también el registro de Sysmon leído como `.evtx` y el de
+  Seguridad (con la auditoría de creación de procesos activada), pasa `hunt` por ellos y se
+  ejecuta también en los PR que tocan la lectura de eventos.
+- Las releases ponen como notas la sección de su versión en este CHANGELOG.
+
+### Cambiado
+
+- `encode --unmatched` nombra los eventos sin traducir por su proveedor e ID
+  (`microsoft-windows-kernel-power 41`) en vez de «sin categoría».
+- Los recuentos de lo ignorado hablan de eventos ilegibles o sin host, no de «líneas».
+- Acciones de GitHub al día (checkout v7, upload-artifact v7, action-gh-release v3), que
+  ya usan Node 24.
+
+### Corregido
+
+- La ayuda de `experiments/evasion.py` decía que los costes de `ttpblast` eran 4/1:1/0; son
+  4/1.
+
 ## [0.2.0] - 2026-10-30
 
 La versión que le da voz y cara: demo guiada, informe HTML, salida en inglés y colores, un
@@ -76,5 +141,6 @@ Gumbel), línea base exacta al estilo EQL, telemetría sintética con tres caden
 lectura de Sysmon (script de exportación y Winlogbeat 7), salida JSON, CI en Windows, Linux
 y macOS, binarios en cada versión etiquetada y un laboratorio de Sysmon en GitHub Actions.
 
-[0.2.0]: https://github.com/Ruby570bocadito/ttpblast/compare/v0.1.0...v0.2.0
+[0.3.0]: https://github.com/Ruby570bocadito/ttpblast/compare/v0.2.0...v0.3
+[0.2.0]: https://github.com/Ruby570bocadito/ttpblast/compare/0e80116...v0.2.0
 [0.1.0]: https://github.com/Ruby570bocadito/ttpblast/tree/0e80116

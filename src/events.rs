@@ -1,14 +1,19 @@
-//! Loads telemetry as NDJSON (one JSON event per line). Nested objects are
+//! Loads telemetry: NDJSON (one JSON event per line), Windows event log
+//! files (.evtx), or a folder with any number of both. Nested objects are
 //! flattened to dotted keys, so `{"process": {"name": "x"}}` and
 //! `{"process.name": "x"}` look the same to the rules.
 
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, Read};
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::{sysmon, time};
+use crate::{evtx, sysmon, time, windows};
+
+/// What a folder is searched for.
+const EXTENSIONS: [&str; 4] = ["evtx", "ndjson", "jsonl", "json"];
 
 /// ECS first; then Winlogbeat 7 and 6, and flat Sysmon exports such as
 /// OTRF's Security Datasets. Keys keep their case: only values are lowercased.
@@ -45,7 +50,14 @@ impl Event {
     pub fn from_json(value: &Value) -> Option<Event> {
         let mut fields = HashMap::new();
         flatten("", value, &mut fields);
+        Self::from_fields(fields)
+    }
+
+    /// From flat fields with lowercased values, as `flatten` and the .evtx
+    /// reader produce them. `None` without a host name.
+    pub fn from_fields(mut fields: HashMap<String, String>) -> Option<Event> {
         sysmon::normalize(&mut fields);
+        windows::normalize(&mut fields);
         let host = HOST_KEYS.iter().find_map(|k| fields.get(*k))?.clone();
         let ts = TIME_KEYS
             .iter()
@@ -57,17 +69,69 @@ impl Event {
 
 pub struct Loaded {
     pub events: Vec<Event>,
-    /// Lines that were not JSON or had no host name.
+    /// Lines that were not JSON, records that could not be read, and
+    /// events without a host name.
     pub skipped: usize,
 }
 
-pub fn load_ndjson(path: &str) -> Result<Loaded, String> {
-    let file = File::open(path)
+/// A file (NDJSON or .evtx, told apart by its first bytes) or a folder,
+/// whose .evtx, .ndjson, .jsonl and .json files are all read, in name order.
+pub fn load(path: &str) -> Result<Loaded, String> {
+    let meta = fs::metadata(path)
         .map_err(|e| tr!("no se puede abrir {path}: {e}", "cannot open {path}: {e}"))?;
+    if !meta.is_dir() {
+        return load_file(Path::new(path));
+    }
+    let mut files: Vec<PathBuf> = fs::read_dir(path)
+        .map_err(|e| tr!("no se puede leer {path}: {e}", "cannot read {path}: {e}"))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| EXTENSIONS.contains(&e.to_lowercase().as_str()))
+        })
+        .collect();
+    files.sort();
+    if files.is_empty() {
+        return Err(tr!(
+            "{path} no tiene ficheros .evtx, .ndjson, .jsonl ni .json",
+            "{path} has no .evtx, .ndjson, .jsonl or .json files"
+        ));
+    }
+    let mut all = Loaded {
+        events: Vec::new(),
+        skipped: 0,
+    };
+    for file in files {
+        let loaded = load_file(&file)?;
+        all.events.extend(loaded.events);
+        all.skipped += loaded.skipped;
+    }
+    Ok(all)
+}
+
+fn load_file(path: &Path) -> Result<Loaded, String> {
+    let shown = path.display();
+    let open = |path: &Path| {
+        File::open(path)
+            .map_err(|e| tr!("no se puede abrir {shown}: {e}", "cannot open {shown}: {e}"))
+    };
+    let mut magic = [0u8; 8];
+    let read = open(path)?.read(&mut magic).unwrap_or(0);
+    if evtx::is_evtx(&magic[..read]) {
+        let bytes = fs::read(path)
+            .map_err(|e| tr!("no se puede leer {shown}: {e}", "cannot read {shown}: {e}"))?;
+        let (records, failed) = evtx::records(&bytes);
+        let total = records.len();
+        let events: Vec<Event> = records.into_iter().filter_map(Event::from_fields).collect();
+        let skipped = failed + total - events.len();
+        return Ok(Loaded { events, skipped });
+    }
     let mut events = Vec::new();
     let mut skipped = 0;
-    for (n, line) in BufReader::new(file).lines().enumerate() {
-        let line = line.map_err(|e| format!("{path}:{}: {e}", n + 1))?;
+    for (n, line) in BufReader::new(open(path)?).lines().enumerate() {
+        let line = line.map_err(|e| format!("{shown}:{}: {e}", n + 1))?;
         if line.trim().is_empty() {
             continue;
         }

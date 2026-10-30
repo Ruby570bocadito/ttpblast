@@ -18,8 +18,9 @@
 **Estado: demo de investigación (v0.2).** Funciona de principio a fin sobre telemetría
 sintética, en español y en inglés, con un informe HTML para compartir. La matriz de
 puntuación es inicial (no aprendida de datos), la calibración en datos reales está por
-demostrar y ya sabemos cómo esconderle una cadena: lee [Limitaciones](#limitaciones) antes
-de fiarte de un E-value.
+demostrar y ya sabemos cómo esconderle una cadena: intercalar comandos corrientes entre sus
+pasos, algo que `--mask` contrarresta en los datos sintéticos. Lee
+[Limitaciones](#limitaciones) antes de fiarte de un E-value.
 
 ## Pruébalo en 30 segundos
 
@@ -74,8 +75,11 @@ git clone https://github.com/Ruby570bocadito/ttpblast && cd ttpblast
 ```bash
 ttpblast demo                                      # demo guiada: telemetría sintética, dos búsquedas y su nota
 ttpblast search --query queries/phishing-lateral.txt --events data/demo/events.ndjson
+ttpblast hunt --events data/demo/events.ndjson     # las 8 consultas de la biblioteca de una vez
+ttpblast hunt --events registros/                  # una carpeta de .evtx o NDJSON, tal cual
 ttpblast search ... --html informe.html            # informe visual: un solo fichero, sin conexiones externas
 ttpblast search ... --json                         # para scripts y otras herramientas
+ttpblast search ... --mask                         # se salta la rutina de cada host: contra el relleno
 ttpblast search ... --lang en                      # en inglés (también TTPBLAST_LANG=en)
 ttpblast encode --events data/demo/events.ndjson --host ws-finance-04   # el "genoma" de un host
 ttpblast alphabet                                  # los 31 símbolos
@@ -113,9 +117,40 @@ modo claro y oscuro.
 | [`phishing-lateral`](queries/phishing-lateral.txt) | Documento de Office → PowerShell → descarga → clave Run → descubrimiento → LSASS → SMB | exacta, variante y parcial |
 | [`exfiltracion`](queries/exfiltracion.txt) | ¿Quién soy? → cuentas → máquinas → comprimir → subir con rclone | un viernes a las 17:31 en ws-hr-02 |
 | [`ransomware-preludio`](queries/ransomware-preludio.txt) | nltest → net group → LSASS → PsExec → Defender → copias de sombra → registros | nada: para datos reales |
+| [`credenciales-rdp`](queries/credenciales-rdp.txt) | ¿Quién soy? → cuentas → máquinas → LSASS → escritorio remoto | se parece a trozos de tres cadenas |
+| [`psexec-destino`](queries/psexec-destino.txt) | servicio nuevo → PsExec lanza un intérprete → reconocimiento, visto desde el destino | nada |
+| [`lolbins-persistencia`](queries/lolbins-persistencia.txt) | mshta o regsvr32 → conexión → ejecutable en disco → BITS → clave Run | se parece a dos cadenas |
+| [`ntds-robo`](queries/ntds-robo.txt) | cuentas → copia de sombra → ntdsutil → comprimir → subir | nada |
+| [`acceso-remoto`](queries/acceso-remoto.txt) | ¿Quién soy? → sistema → Defender → AnyDesk o similar → servicio | nada |
 
 Una consulta es una lista de códigos de símbolo o IDs de técnica, en orden, con
 comentarios `#`. Escribir la tuya es copiar una y cambiar las líneas.
+
+**`ttpblast hunt` pasa todas de una vez** por la misma telemetría, leída una sola vez, y da
+un veredicto por consulta: la vista de triaje antes de mirar ninguna en detalle. Los hosts
+que señalan varias consultas salen aparte. En la demo son justo los cuatro atacados,
+porque las consultas emparentadas encajan en trozos de sus cadenas:
+
+```text
+ttpblast hunt · 8 consultas contra data/demo/events.ndjson
+32.080 eventos · 40 hosts · 0,68 s
+
+  ● phishing-lateral      3 hosts muy por encima del azar  ws-legal-02 2.3e-6 · ws-finance-04 1.8e-4 · ws-sales-03 4.0e-4
+  ● exfiltracion          1 host muy por encima del azar   ws-hr-02 6.4e-3
+  ○ ransomware-preludio   nada se aleja del azar           (el mejor, ws-ops-02, tiene E = 1,40)
+  ◐ credenciales-rdp      4 hosts a revisar                ws-finance-04 0,03 · ws-hr-02 0,41 · ws-legal-02 0,52 · it-admin-02 0,60
+  ...
+
+Hosts que señalan varias consultas (lo primero que miraría):
+  ◆ ws-finance-04: phishing-lateral, credenciales-rdp
+  ◆ ws-hr-02: exfiltracion, credenciales-rdp
+  ◆ ws-legal-02: phishing-lateral, credenciales-rdp, lolbins-persistencia
+  ◆ ws-sales-03: phishing-lateral, lolbins-persistencia
+```
+
+Con ocho consultas, algún «a revisar» suelto en un administrador (E entre 0,1 y 1) es lo
+esperable por azar. `--json` da lo mismo para scripts y `--html CARPETA`, un informe por
+consulta.
 
 **Cada host se compara consigo mismo.** La consulta de exfiltración tiene una trampa:
 srv-backup-01 comprime y sube copias con rclone todas las noches. Su parecido con la
@@ -123,7 +158,17 @@ consulta (puntuación 12) es mayor que el del segundo de la tabla, pero para ese
 normal: E = 40. El portátil de recursos humanos que hace lo mismo un viernes por la tarde,
 después de mirar cuentas y máquinas, sale con E = 6,4·10⁻³.
 
-## Con tu propia telemetría (Windows + Sysmon)
+## Con tu propia telemetría
+
+`--events` acepta un fichero `.evtx` de Windows, un NDJSON o una carpeta con varios de
+ellos (por ejemplo, los registros recogidos de varios equipos en una respuesta a
+incidentes). Los `.evtx` se leen directamente, sin dependencias y sin pasar por PowerShell.
+El lector da exactamente lo mismo que el de Windows (`Get-WinEvent`) en 8.240 registros
+reales de cuatro registros distintos, y un test lo compara con cualquier `.evtx` que le
+des (ver [CONTRIBUTING](CONTRIBUTING.md)). Un fichero dañado o manipulado no lo tumba: los
+registros ilegibles se saltan y se cuentan.
+
+### Con Sysmon
 
 [Sysmon](https://learn.microsoft.com/es-es/sysinternals/downloads/sysmon) es una
 herramienta gratuita de Microsoft Sysinternals que registra lo que pasa en el equipo
@@ -152,11 +197,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
 .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --html data\sysmon\informe.html
 ```
 
+O, sin el script, con el registro entero tal cual (también como administrador):
+
+```powershell
+New-Item -ItemType Directory -Force data\evtx | Out-Null
+wevtutil epl Microsoft-Windows-Sysmon/Operational data\evtx\sysmon.evtx
+.\target\release\ttpblast.exe hunt --events data\evtx --html data\evtx\informes
+```
+
 - **Privacidad.** [`scripts/export-sysmon.ps1`](scripts/export-sysmon.ps1) solo exporta
   rutas de procesos, ficheros y claves de registro, y destinos de red. No exporta líneas
   de comandos, usuarios ni hashes. El resultado queda en `data\`, que git ignora.
   Tampoco exporta los eventos de sus propias ejecuciones (la de ahora y las anteriores),
-  para no contaminar la medición.
+  para no contaminar la medición. El `.evtx` entero, en cambio, sí lleva líneas de
+  comandos, usuarios y hashes: ttpblast no los usa, pero no lo compartas sin mirarlo.
 - **Otros formatos.** También se leen los eventos de Sysmon enviados por Winlogbeat 6 o 7
   y las exportaciones planas con los campos de Sysmon en la raíz (`EventID`, `Hostname`,
   `Image`…), el formato de los Security Datasets de OTRF. Y cualquier NDJSON con campos al
@@ -171,6 +225,34 @@ powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
 - **Espacio.** Sysmon escribe en el registro de eventos, que tiene un tamaño máximo; si se
   llena, se pierden los eventos más antiguos.
 - **Desinstalar.** `C:\Tools\Sysmon\Sysmon64.exe -u`.
+
+### Sin Sysmon: los registros de Windows
+
+Muchos equipos no tienen Sysmon, pero Windows ya registra parte de lo mismo si se activa su
+auditoría. ttpblast traduce:
+
+| Registro | Evento | Qué es | Para qué símbolos |
+|---|---|---|---|
+| Seguridad | 4688 | proceso creado (con su padre desde Windows 10) | casi todos: PSH, CMD, USR, SID, TSK, UEX… |
+| Seguridad | 4657 | valor del registro escrito (con una SACL en la clave) | RUN, SVC, DEF |
+| Seguridad | 5156 | conexión permitida por el firewall (solo salientes) | SMB, WRM, RDP, C2W, EXF |
+| Sistema | 7045 | servicio instalado | SVC |
+
+Para la creación de procesos, en una PowerShell como administrador (el GUID es la
+subcategoría «Creación de procesos», con cualquier idioma de Windows):
+
+```powershell
+auditpol /set /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}" /success:enable
+# … días después:
+New-Item -ItemType Directory -Force data\evtx | Out-Null
+wevtutil epl Security data\evtx\security.evtx
+wevtutil epl System data\evtx\system.evtx
+.\target\release\ttpblast.exe hunt --events data\evtx
+```
+
+El laboratorio de la CI lo comprueba en una máquina real: `whoami`, `hostname` y `schtasks`
+salen codificados igual desde el registro de Seguridad que desde Sysmon. Los accesos a
+LSASS no tienen equivalente sin Sysmon, así que el paso `LSA` no aparecerá.
 
 ## Cómo funciona
 
@@ -210,6 +292,19 @@ powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 7
      así que sus parecidos parciales no sorprenden; en un portátil de ventas, sí.
    - La salida enseña el diagnóstico del ajuste (si la cola no parece exponencial, lo marca
      con ⚠) y, en dos líneas, dónde cae la cadena entre los barajados.
+6. **Máscara de rutina (opcional, `--mask`)**, contra el relleno entre pasos, como SEG y DUST
+   enmascaran en BLAST las regiones de baja complejidad. Para cada host y cada consulta es
+   rutina lo que la consulta no usa y las técnicas de la consulta que el host repite (2 veces
+   o más, `--routine`): un paso de una cadena aparece una vez; una técnica que se repite es
+   costumbre del host o relleno.
+   - La rutina se salta gratis, sin abrir un hueco ni cortar una racha de pasos de más, pero
+     se puede seguir emparejando con un paso de la consulta (cmd por PowerShell sigue
+     valiendo).
+   - La rutina que el alineamiento se salta dentro de la cadena sale también de los
+     barajados de ese host. Si no, alargaría el tramo de la cadena, y los barajados, que lo
+     rellenan al azar, se parecerían más a la consulta.
+   - Un host cuyo mejor alineamiento no se salta nada se juzga como sin `--mask`: saltar
+     gratis solo subiría la puntuación de sus barajados.
 
 ## Resultados en datos sintéticos
 
@@ -225,12 +320,12 @@ servidor de copias que comprime y sube datos cada noche, y cuatro cadenas inyect
 | `parcial` | phishing-lateral | solo los 4 primeros pasos | no | puesto 3, E = 4,0·10⁻⁴ |
 | `exfiltración` | exfiltracion | nada, pero el servidor de copias hace los dos últimos pasos cada noche | sí | puesto 1, E = 6,4·10⁻³ |
 
-**Calibración** (`python experiments/calibracion.py --seeds 20`, y `--extra="--block 1"`
-para las otras filas): 20 conjuntos de datos con semillas distintas, las dos consultas de la
-demo, 36 hosts benignos (sin ninguna cadena) en cada búsqueda; 1.440 búsquedas de hosts
-benignos en total. Si los E-values estuvieran bien calibrados, ~36 tendrían E ≤ 1 y ~3,6,
-E ≤ 0,1. Cada celda de las cadenas es su E mediano y, entre paréntesis, en cuántos de los 20
-conjuntos sale con E ≤ 0,01.
+**Calibración** (`python experiments/calibracion.py --seeds 20`, y `--extra="--block 1"` o
+`--extra="--mask"` para las otras filas): 20 conjuntos de datos con semillas distintas, las
+dos consultas de la demo, 36 hosts benignos (sin ninguna cadena) en cada búsqueda; 1.440
+búsquedas de hosts benignos en total. Si los E-values estuvieran bien calibrados, ~36
+tendrían E ≤ 1 y ~3,6, E ≤ 0,1. Cada celda de las cadenas es su E mediano y, entre
+paréntesis, en cuántos de los 20 conjuntos sale con E ≤ 0,01.
 
 | Barajado | Modelo nulo | Benignos E ≤ 1 | Benignos E ≤ 0,1 | Exacta | Variante | Parcial | Exfiltración |
 |---|---|---|---|---|---|---|---|
@@ -238,6 +333,10 @@ conjuntos sale con E ≤ 0,01.
 | bloques de 3 (por defecto) | `gumbel` | 30 | 1 | 4,0·10⁻⁹ (20) | 2,0·10⁻⁵ (19) | 2,0·10⁻³ (16) | 7,4·10⁻⁷ (20) |
 | bloques de 1 | `cola` | 13 | 0 | 7,1·10⁻⁶ (20) | 1,1·10⁻³ (16) | 2,1·10⁻² (5) | 5,3·10⁻⁴ (19) |
 | bloques de 1 | `gumbel` | 19 | 5 | 1,9·10⁻⁸ (20) | 5,4·10⁻⁵ (20) | 8,9·10⁻⁴ (18) | 3,3·10⁻⁸ (20) |
+| bloques de 3, `--mask` | `cola` | 17 | 1 | 1,4·10⁻⁶ (20) | 9,1·10⁻⁴ (20) | 2,1·10⁻² (8) | 2,0·10⁻³ (18) |
+| bloques de 3, `--mask` | `gumbel` | 36 | 3 | 4,0·10⁻⁹ (20) | 7,4·10⁻⁵ (19) | 2,0·10⁻³ (16) | 7,4·10⁻⁷ (20) |
+| bloques de 1, `--mask` | `cola` | 16 | 1 | 7,1·10⁻⁶ (20) | 1,2·10⁻³ (20) | 2,1·10⁻² (5) | 5,3·10⁻⁴ (19) |
+| bloques de 1, `--mask` | `gumbel` | 22 | 7 | 1,9·10⁻⁸ (20) | 1,2·10⁻⁴ (20) | 8,9·10⁻⁴ (18) | 3,3·10⁻⁸ (20) |
 
 - Con el modelo por defecto, las cuatro cadenas quedan entre los 3 primeros puestos en los
   20 conjuntos (la de exfiltración, siempre la primera); con la Gumbel, entre los 4.
@@ -248,6 +347,11 @@ conjuntos sale con E ≤ 0,01.
     forma de la cola que se observa. La Gumbel completa no modela el "suelo" que se forma
     cuando un símbolo raro aparece en todos los barajados.
   - Con telemetría real habrá que volver a elegir.
+- **Con `--mask` hay algo más de falsas alarmas** (17 frente a 12 con la cola; 36 frente a
+  30 con la Gumbel, justo lo calibrado), por cómo elige su modelo nulo (ver
+  [Cuánto cuesta esconderse](#cuánto-cuesta-esconderse)). Las cadenas sin relleno salen
+  igual, y la variante algo mejor. La Gumbel con bloques de 1 se pasa en la cola, con
+  máscara (7 con E ≤ 0,1 de ~3,6) o sin ella (5).
 - **Lo que se probó y no funcionó:**
   - *Bloques de 3 sin desordenar la región alineada.* La cadena queda en trozos dentro de
     su propio modelo de azar y se penaliza: la E mediana de la exacta subía a 4·10⁻² con la
@@ -273,30 +377,66 @@ conjuntos sale con E ≤ 0,01.
 
 Quien conozca el método puede intercalar comandos corrientes (cmd, schtasks, ipconfig…)
 entre los pasos de su cadena. `ttpblast synth --padding N` mete N entre cada dos pasos de
-cada cadena inyectada, y [`experiments/evasion.py`](experiments/evasion.py) mide qué queda:
-20 semillas, 80 cadenas por fila.
+cada cadena inyectada, y [`experiments/evasion.py`](experiments/evasion.py) mide qué queda
+(`--seeds 20 --gaps 4/1,4/1:0/0 --mask`): 20 semillas, 80 cadenas por fila.
 
-| Relleno entre pasos | Costes por defecto: cadenas con E ≤ 0,01 | E mediano de la exacta | Pasos de más gratis (`--extra-open 0`) | E mediano de la exacta |
-|---|---|---|---|---|
-| 0 | 65/80 | 1,4·10⁻⁶ | 58/80 | 9,0·10⁻⁵ |
-| 1 | **0/80** | 0,89 | 18/80 | 4,8·10⁻³ |
-| 2 | 0/80 | 20 | 5/80 | 1,6·10⁻² |
-| 3 | 0/80 | 26 | 2/80 | 3,5·10⁻² |
-| 4 | 0/80 | 29 | 0/80 | 7,0·10⁻² |
+| Relleno entre pasos | Costes por defecto: cadenas con E ≤ 0,01 | E mediano de la exacta | Pasos de más gratis (`--extra-open 0`) | E mediano de la exacta | **Con `--mask`** | E mediano de la exacta |
+|---|---|---|---|---|---|---|
+| 0 | 65/80 | 1,4·10⁻⁶ | 58/80 | 9,0·10⁻⁵ | **66/80** | 1,4·10⁻⁶ |
+| 1 | **0/80** | 0,89 | 18/80 | 4,8·10⁻³ | **60/80** | 9,1·10⁻⁵ |
+| 2 | 0/80 | 20 | 5/80 | 1,6·10⁻² | **60/80** | 9,1·10⁻⁵ |
+| 3 | 0/80 | 26 | 2/80 | 3,5·10⁻² | **61/80** | 9,1·10⁻⁵ |
+| 4 | 0/80 | 29 | 0/80 | 7,0·10⁻² | **60/80** | 1,1·10⁻⁴ |
 
-- **Basta un comando intercalado entre cada dos pasos para esconder las cuatro cadenas.**
-  Con los costes por defecto, cada uno abre un hueco (−4) o se empareja mal, y la
-  puntuación se hunde: en la demo, la exacta pasa de 45 a 18.
+- **Sin `--mask`, basta un comando intercalado entre cada dos pasos para esconder las cuatro
+  cadenas.** Con los costes por defecto, cada uno abre un hueco (−4) o se empareja mal, y la
+  puntuación se hunde: en la demo, la exacta pasa de 45 a 18. Las falsas alarmas no cambian
+  (0,34 hosts benignos con E ≤ 1 de cada 40, frente a ~1 si estuviera calibrado): el
+  relleno solo toca los hosts atacados.
 - Abaratar los pasos de más ayuda poco y cuesta detección sin relleno (58/80 frente a
   65/80). Si los pasos de más son gratis, la puntuación se mantiene, pero sube la del azar:
   la ventana de la cadena es más larga y, en los barajados, una ventana larga encuentra los
   símbolos de la consulta en un orden parecido con más facilidad.
-- Las falsas alarmas no cambian (0,34 hosts benignos con E ≤ 1 de cada 40, frente a ~1 si
-  estuviera calibrado): el relleno solo toca los hosts atacados.
-- Es el mismo problema que las regiones de baja complejidad en BLAST, que se enmascaran
-  (SEG, DUST) antes de alinear. Aquí el equivalente sería enmascarar la rutina de cada host;
-  está en la [hoja de ruta](#hoja-de-ruta). Mientras tanto, `ttpblast` sirve contra
-  cadenas que varían sin intentar esconderse de él, no contra un adversario que lo conoce.
+- **Con `--mask`, el relleno deja de esconderlas: 60 de 80 con 1 a 4 comandos entre pasos**,
+  casi como sin relleno. Es el equivalente a enmascarar las regiones de baja complejidad en
+  BLAST (SEG, DUST): la rutina de cada host se salta gratis (punto 6 de
+  [Cómo funciona](#cómo-funciona)). En la demo con dos comandos entre pasos, la exacta
+  vuelve a puntuar 45, con 16 eventos de rutina saltados, y su E pasa de 5,1 a 4,9·10⁻⁴.
+  - Por escenario, con relleno: la exacta en las 20 semillas, la variante en 19 o 20, la
+    exfiltración en 15 y la parcial en 5 o 6 (sin relleno: 20, 19, 18 y 8).
+  - Sin relleno no pierde nada (66/80 frente a 65/80): una cadena compacta no se salta nada
+    y se juzga como sin máscara. La variante gana un poco, porque sus dos pasos de más son
+    rutina.
+  - **El precio, en falsas alarmas:** 0,46–0,49 hosts benignos con E ≤ 1 de cada 40, frente
+    a 0,34 sin máscara; en el experimento de calibración, 17 de 1.440 frente a 12 (~36 si
+    estuviera calibrado). Vienen de elegir el modelo nulo después de alinear: un host que no
+    se salta rutina se juzga sin máscara, que da E-values menores. En el peor caso eso
+    podría duplicar las falsas alarmas; medido, suben un 40 % y siguen por debajo de lo
+    calibrado.
+  - Con la rutina gratis, un alineamiento puede abarcar horas de actividad: en la demo con
+    relleno, un administrador sale con E = 0,88 y un alineamiento de 2,1 h. Mira la duración
+    antes de dar un resultado por bueno.
+- **Qué no arregla.** Cambiar el orden de los pasos, separarlos más de una hora
+  (`--max-gap`) o repartirlos entre hosts sigue escondiendo la cadena, con máscara o sin
+  ella. Y el relleno sintético sale de ocho comandos fijos: con telemetría real hay que medir
+  cuánta rutina se cuela de verdad entre los pasos de una intrusión. Por eso, de momento,
+  `--mask` es una opción y no lo normal.
+
+**Lo que se probó y no funcionó** (las mismas 20 semillas; cadenas con E ≤ 0,01 de 80, con
+0/1/2/3/4 comandos de relleno entre pasos):
+
+| Variante | Detectadas | Por qué falla |
+|---|---|---|
+| Borrar del host, antes de alinear, lo que repite 3 veces o más | 9/1/0/4/5 | Se lleva pasos de la cadena (PowerShell, la conexión web e incluso `UEX`, porque imprimir desde Word también lo es) y las sustituciones de la variante. Y lo que queda está tan lleno de símbolos de la consulta que los barajados la reproducen con facilidad. |
+| Lo mismo, sin borrar nunca las técnicas de la consulta | 35/8/8/16/11 | El mismo problema en los barajados, y la variante pierde igual sus sustituciones. |
+| Saltar gratis (sin borrar) lo que el host repite 3 veces o más | 61/9/5/7/3 | 5 de los 8 comandos de relleno (ipconfig, tasklist, wscript, mstsc, 7z) salen una vez cada dos semanas en un puesto de trabajo: para ese host no son rutina, aunque en la red sean corrientes. |
+| Saltar gratis todo lo que no es de la consulta | 61/32/15/8/4 | El relleno alarga el tramo de la cadena, y los barajados, que lo llenan al azar, meten en él más símbolos de la consulta. |
+| … con la rutina fija en su sitio en los barajados | 32/19/12/10/6 | Los barajados solo mueven símbolos de la consulta: la cadena compite con copias de sí misma. |
+| … quitando de los barajados la rutina saltada | 62/51/34/25/19 | El relleno con técnicas de la propia consulta (PowerShell, 7z) sigue costando. |
+| `--mask` juzgando siempre con el modelo nulo enmascarado | 60 sin relleno; con relleno, igual | Si no hay nada que saltar, saltar gratis solo sube la cola de los barajados: en la exfiltración de la demo, λ baja de 0,44 a 0,40 y la E se duplica al extrapolar. |
+| Quitar la rutina saltada y puntuar luego con los costes normales | 66/65/63/61/64 | 45 a 49 benignos con E ≤ 1, más de los ~36 calibrados: los barajados no ven la ventaja de elegir qué quitar. |
+| Buscar con y sin máscara y quedarse con la mejor (E × 2) | 63/54/52/51/53 | Pagar por hacer dos pruebas cuesta más de lo que gana. |
+| `--routine` 3, 4 o 6 en vez de 2 | 60/57/55/57, 58/54/52/54 y 58/51/47/47 (relleno 1–4) | Cuanto más alto, más relleno con técnicas de la consulta sigue costando. |
 
 ## Comparación honesta
 
@@ -304,7 +444,7 @@ cada cadena inyectada, y [`experiments/evasion.py`](experiments/evasion.py) mide
 |---|---|---|
 | Variantes (técnica sustituida, paso extra o que falta) | sí | no |
 | ¿Es raro este parecido en este host? | E-value por host | no lo dice |
-| Relleno deliberado entre pasos | lo esconde con un solo comando | no le afecta si cabe en `maxspan` |
+| Relleno deliberado entre pasos | sin `--mask`, lo esconde con un solo comando; con `--mask`, 60 de 80 cadenas siguen saliendo (datos sintéticos) | no le afecta si cabe en `maxspan` |
 | Coste | alineamiento + 200 barajados por host (~0,15 s en la demo, con todos los núcleos) | muy bajo |
 | Madurez | demo de investigación | herramientas maduras en producción |
 | Explicación | alineamiento paso a paso con sus eventos e informe HTML | eventos que coinciden |
@@ -316,8 +456,11 @@ conocidas y para priorizar.
 
 - **Solo se ha probado con datos sintéticos.** La pregunta abierta número uno es si los
   E-values siguen calibrados con telemetría real.
-- **Se esconde con relleno.** Un comando corriente entre cada dos pasos basta para que una
-  cadena no destaque (ver [Cuánto cuesta esconderse](#cuánto-cuesta-esconderse)).
+- **Sin `--mask`, se esconde con relleno.** Un comando corriente entre cada dos pasos basta
+  para que una cadena no destaque. `--mask` lo contrarresta en los datos sintéticos (60 de
+  80 cadenas con relleno, frente a 0) a cambio de algo más de falsas alarmas, y no resiste
+  cambiar el orden de los pasos ni repartirlos en el tiempo o entre hosts (ver
+  [Cuánto cuesta esconderse](#cuánto-cuesta-esconderse)).
 - **La matriz de puntuación es a mano:** rareza del símbolo más una regla por tácticas. La
   idea de fondo es aprenderla de cadenas reales, como se aprendió BLOSUM de bloques de
   proteínas.
@@ -337,36 +480,45 @@ conocidas y para priorizar.
   extra, porque los huecos afines prefieren un hueco largo a dos cortos.
 - **Escala.** El coste es O(m·n) por tramo, más los barajados, repartido entre los núcleos.
   Para millones de eventos hará falta un índice de semillas, como hace BLAST.
-- **Formato de entrada.** NDJSON con campos al estilo ECS. El acceso a procesos usa
-  `process.target.name`, que no es estándar. Sysmon (exportado con el script, por
-  Winlogbeat 6 o 7, o plano como en OTRF) se traduce solo; otras fuentes necesitan mapear
-  campos o un adaptador.
+- **Formato de entrada.** `.evtx` o NDJSON con campos al estilo ECS. El acceso a procesos
+  usa `process.target.name`, que no es estándar. Sysmon (en `.evtx`, exportado con el
+  script, por Winlogbeat 6 o 7, o plano como en OTRF) y los eventos 4688, 4657, 5156 y 7045
+  de Windows se traducen solos; otras fuentes (Linux, EDR) necesitan mapear campos o un
+  adaptador.
 
 ## Hoja de ruta
 
 1. Probar el alfabeto con datos públicos de ataques simulados (Security Datasets de OTRF,
    que ya se leen): ¿se alinean dos ejecuciones del mismo escenario mejor que con el ruido?
-2. **Enmascarar la rutina** de cada host antes de alinear, como SEG y DUST hacen con las
-   regiones de baja complejidad, y volver a medir el coste de evasión.
+2. **Decidir si `--mask` pasa a ser lo normal**, con telemetría real: cuánta rutina se cuela
+   entre los pasos de una intrusión de verdad, y cuántas falsas alarmas añade.
 3. Aprender la matriz de sustitución de cadenas reales.
 4. Calibración con telemetría real, y decidir el modelo nulo: cola o Gumbel, tamaño de
    bloque, hosts parecidos como referencia.
-5. Más fuentes de entrada: ficheros EVTX directamente y salidas NDJSON de EDR abiertos.
+5. Más fuentes de entrada: salidas NDJSON de EDR abiertos y telemetría de Linux.
 6. Índice de semillas (k-mers) para volúmenes grandes.
-7. Huecos que dependan del tiempo, y cadenas entre hosts.
+7. Huecos que dependan del tiempo, cadenas entre hosts y pasos en otro orden.
 
-Hecho en la v0.2: medir el coste de evasión (y el resultado está arriba), leer Winlogbeat 6
-y el formato plano de OTRF. El detalle, en el [CHANGELOG](CHANGELOG.md).
+Hecho: medir el coste de evasión (y el resultado está arriba), leer Winlogbeat 6 y el
+formato plano de OTRF (v0.2); enmascarar la rutina de cada host (`--mask`) y volver a medir
+ese coste, leer `.evtx` directamente, los registros de Windows sin Sysmon y carpetas
+enteras, y pasar toda la biblioteca con `hunt` (aún sin publicar). El detalle, en el
+[CHANGELOG](CHANGELOG.md).
 
 ## Formatos
 
-- **Eventos:** un JSON por línea. Los objetos anidados y las claves con puntos son
+- **Eventos:** un JSON por línea, o ficheros `.evtx` de Windows (se distinguen por sus
+  primeros bytes, no por la extensión), o una carpeta, de la que se leen los `.evtx`,
+  `.ndjson`, `.jsonl` y `.json`. En JSON, los objetos anidados y las claves con puntos son
   equivalentes, y los valores se comparan sin distinguir mayúsculas. El host sale de
   `host.name` (o `host.hostname`, `agent.hostname`, `winlog.computer_name`,
   `computer_name`, `Hostname`) y la hora de `@timestamp` (o `timestamp`, `UtcTime`).
   Campos que usan las reglas: `process.name`, `process.parent.name`,
   `process.target.name`, `destination.port`, `destination.address`, `file.path`,
-  `file.extension`, `registry.path`, `event.category` y `event.action`.
+  `file.extension`, `registry.path`, `event.category` y `event.action`. Un registro de un
+  `.evtx` da `EventID`, `Channel`, `EventRecordID`, `SourceName` (el proveedor),
+  `Hostname`, `@timestamp`, el resto de `System` como `System.*` y cada valor de
+  `EventData` por su nombre.
 - **Consultas:** códigos de símbolo o IDs de técnica, separados por espacios, comas o
   flechas; `#` inicia un comentario. Ver [`queries/`](queries/).
 - **Alfabeto:** JSON con `symbols`. Cada símbolo tiene `code`, `technique`, `tactic`,
@@ -374,7 +526,11 @@ y el formato plano de OTRF. El detalle, en el [CHANGELOG](CHANGELOG.md).
   primer símbolo que encaja. Se carga otro con `--alphabet`.
 - **Salida JSON** (`--json`): la consulta, la telemetría, los ajustes, el veredicto
   (`summary`), cada resultado con su alineamiento, sus pruebas y el histograma de sus
-  barajados, y la línea base exacta.
+  barajados, y la línea base exacta. Con `--mask`, la rutina que se salta un alineamiento
+  aparece en él como pasos `"kind": "masked"`, y cada resultado dice cuántos (`masked`).
+  `hunt --json` da, por consulta, los hosts muy por encima del azar (`strong`), los que
+  merecen otra mirada (`weak`) y el mejor, y aparte los hosts que señalan varias consultas
+  (`repeated`).
 
 ## Contribuir
 

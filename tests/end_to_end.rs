@@ -43,15 +43,23 @@ fn demo_events() -> &'static str {
     })
 }
 
+/// The same telemetry with two padding commands between every two steps of
+/// each chain.
+fn padded_events() -> &'static str {
+    static EVENTS: OnceLock<String> = OnceLock::new();
+    EVENTS.get_or_init(|| {
+        let dir = temp_dir("padded");
+        run(&["synth", "--out", dir.to_str().unwrap(), "--padding", "2"]);
+        dir.join("events.ndjson").to_str().unwrap().to_string()
+    })
+}
+
 fn search_json(query: &str, extra: &[&str]) -> Value {
-    let mut args = vec![
-        "search",
-        "--query",
-        query,
-        "--events",
-        demo_events(),
-        "--json",
-    ];
+    search_json_in(demo_events(), query, extra)
+}
+
+fn search_json_in(events: &str, query: &str, extra: &[&str]) -> Value {
+    let mut args = vec!["search", "--query", query, "--events", events, "--json"];
     args.extend(extra);
     serde_json::from_str(&run(&args)).expect("salida JSON válida")
 }
@@ -112,6 +120,56 @@ fn each_host_is_judged_against_its_own_routine() {
     let backup = host(hits, "srv-backup-01");
     assert!(backup["evalue"].as_f64().unwrap() > 1.0, "{backup}");
     assert!(backup["score"].as_i64().unwrap() >= 10, "{backup}");
+}
+
+#[test]
+fn the_mask_sees_through_padding() {
+    let all = ["--evalue", "1e9", "--max-hits", "100"];
+    let query = "queries/phishing-lateral.txt";
+    // Two ordinary commands between every two steps hide the exact chain.
+    let plain = search_json_in(padded_events(), query, &all);
+    let legal = host(plain["hits"].as_array().unwrap(), "ws-legal-02");
+    assert!(legal["evalue"].as_f64().unwrap() > 1.0, "{legal}");
+
+    let masked = search_json_in(padded_events(), query, &[&all[..], &["--mask"]].concat());
+    assert_eq!(masked["settings"]["mask"], true);
+    let hits = masked["hits"].as_array().unwrap();
+    let legal = host(hits, "ws-legal-02");
+    assert!(legal["evalue"].as_f64().unwrap() < 0.01, "{legal}");
+    // The 16 padding commands are skipped for free, not counted as gaps.
+    assert_eq!(
+        (legal["masked"].as_u64(), legal["gaps"].as_u64()),
+        (Some(16), Some(0))
+    );
+    let kinds: Vec<&str> = legal["alignment"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds.iter().filter(|&&k| k == "masked").count(), 16);
+    // The other two chains come back too, and no benign host gets that far.
+    let chains = ["ws-legal-02", "ws-finance-04", "ws-sales-03"];
+    for hit in hits {
+        let (name, evalue) = (
+            hit["host"].as_str().unwrap(),
+            hit["evalue"].as_f64().unwrap(),
+        );
+        assert_eq!(chains.contains(&name), evalue < 0.01, "{name}: {evalue}");
+    }
+}
+
+#[test]
+fn without_padding_the_mask_leaves_a_compact_chain_alone() {
+    // The exact chain skips nothing: same score and E-value as without --mask.
+    let plain = search_json("queries/phishing-lateral.txt", &[]);
+    let masked = search_json("queries/phishing-lateral.txt", &["--mask"]);
+    let (a, b) = (
+        host(plain["hits"].as_array().unwrap(), "ws-legal-02"),
+        host(masked["hits"].as_array().unwrap(), "ws-legal-02"),
+    );
+    assert_eq!((&a["score"], &a["evalue"]), (&b["score"], &b["evalue"]));
+    assert_eq!(b["masked"], 0);
 }
 
 #[test]
@@ -213,4 +271,28 @@ fn typos_get_a_suggestion() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("did you mean «search»"));
     let out = output(&["search", "--evalu", "3", "--lang", "es"]);
     assert!(String::from_utf8_lossy(&out.stderr).contains("--evalue"));
+}
+
+#[test]
+fn hunt_runs_the_whole_library_and_points_at_the_attacked_hosts() {
+    let text = run(&["hunt", "--events", demo_events(), "--lang", "es"]);
+    assert!(text.contains("8 consultas"), "{text}");
+    assert!(text.contains("3 hosts muy por encima del azar"), "{text}");
+    let doc: Value = serde_json::from_str(&run(&["hunt", "--events", demo_events(), "--json"]))
+        .expect("JSON de hunt");
+    let queries = doc["queries"].as_array().unwrap();
+    assert_eq!(queries.len(), 8);
+    let phishing = queries
+        .iter()
+        .find(|q| q["query"] == "phishing-lateral")
+        .unwrap();
+    assert_eq!(phishing["strong"].as_array().unwrap().len(), 3);
+    // Every host that several queries flag is one of the attacked ones.
+    let attacked = ["ws-legal-02", "ws-finance-04", "ws-sales-03", "ws-hr-02"];
+    let repeated = doc["repeated"].as_array().unwrap();
+    assert!(!repeated.is_empty());
+    for entry in repeated {
+        let host = entry["host"].as_str().unwrap();
+        assert!(attacked.contains(&host), "{host} no es un host atacado");
+    }
 }

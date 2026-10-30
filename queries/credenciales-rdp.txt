@@ -1,0 +1,11 @@
+# Robo de credenciales y salto por escritorio remoto.
+# Genérica: alguien con acceso a una máquina mira quién es y qué cuentas y
+# equipos hay, saca credenciales de la memoria de LSASS y las usa para abrir
+# una sesión de escritorio remoto en otra máquina. Sin malware que llame la
+# atención: todo son herramientas de Windows.
+
+USR   # T1033      ¿quién soy? (whoami)
+ACD   # T1087      cuentas y grupos (net user, net group)
+RSD   # T1018      otras máquinas de la red (nltest)
+LSA   # T1003.001  credenciales de la memoria de LSASS
+RDP   # T1021.001  escritorio remoto a otra máquina

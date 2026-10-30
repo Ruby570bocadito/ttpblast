@@ -1,11 +1,13 @@
 name: Sysmon lab
 
 # Laboratorio en una máquina Windows desechable de GitHub: instala Sysmon con
-# los mismos comandos del README, genera actividad benigna (compilar, comandos
-# de administración habituales y una descarga web), exporta los eventos con
-# scripts/export-sysmon.ps1 y comprueba que ttpblast los lee y los codifica.
-# Se lanza a mano (Actions → Sysmon lab → Run workflow) o cuando cambia algo
-# de la cadena de Sysmon.
+# los mismos comandos del README, activa la auditoría de creación de procesos,
+# genera actividad benigna (compilar, comandos de administración habituales y
+# una descarga web) y comprueba que ttpblast codifica esos comandos por tres
+# caminos: el NDJSON de scripts/export-sysmon.ps1, el registro de Sysmon leído
+# como .evtx y el de Seguridad (evento 4688), también como .evtx.
+# Se lanza a mano (Actions → Sysmon lab → Run workflow), en main o en un PR
+# cuando cambia algo de la lectura de eventos.
 on:
   workflow_dispatch:
   push:
@@ -13,6 +15,17 @@ on:
     paths:
       - 'scripts/export-sysmon.ps1'
       - 'src/sysmon.rs'
+      - 'src/windows.rs'
+      - 'src/evtx.rs'
+      - 'src/events.rs'
+      - 'alphabet/**'
+      - '.github/workflows/sysmon-lab.yml'
+  pull_request:
+    paths:
+      - 'scripts/export-sysmon.ps1'
+      - 'src/sysmon.rs'
+      - 'src/windows.rs'
+      - 'src/evtx.rs'
       - 'src/events.rs'
       - 'alphabet/**'
       - '.github/workflows/sysmon-lab.yml'
@@ -24,10 +37,10 @@ jobs:
       run:
         shell: powershell
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Instalar Sysmon (los mismos comandos que el README)
+      - name: Instalar Sysmon (los mismos comandos que el README) y auditar procesos
         run: |
           $ProgressPreference = 'SilentlyContinue'
           New-Item -ItemType Directory -Force C:\Tools\Sysmon | Out-Null
@@ -36,6 +49,10 @@ jobs:
           Invoke-WebRequest https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml -OutFile C:\Tools\Sysmon\sysmonconfig.xml
           C:\Tools\Sysmon\Sysmon64.exe -accepteula -i C:\Tools\Sysmon\sysmonconfig.xml
           Get-Service Sysmon64
+          # Creación de procesos (evento 4688 de Seguridad), por GUID para no
+          # depender del idioma de Windows.
+          auditpol /set /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}" /success:enable
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Actividad benigna
         run: |
@@ -63,25 +80,39 @@ jobs:
           .\target\release\ttpblast.exe encode --events data\sysmon\events.ndjson --unmatched 20 | Tee-Object -FilePath data\sysmon\encode.txt
           .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --details 1 --html data\sysmon\informe.html
           .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --json | Out-File -Encoding utf8 data\sysmon\result.json
+          # The same activity, straight from the event logs.
+          New-Item -ItemType Directory -Force data\evtx | Out-Null
+          wevtutil epl Microsoft-Windows-Sysmon/Operational data\evtx\sysmon.evtx
+          wevtutil epl Security data\evtx\security.evtx
+          .\target\release\ttpblast.exe encode --events data\evtx\sysmon.evtx --unmatched 10 | Tee-Object -FilePath data\sysmon\encode-sysmon-evtx.txt
+          .\target\release\ttpblast.exe encode --events data\evtx\security.evtx --unmatched 10 | Tee-Object -FilePath data\sysmon\encode-security-evtx.txt
+          .\target\release\ttpblast.exe hunt --events data\evtx --html data\sysmon\hunt | Tee-Object -FilePath data\sysmon\hunt.txt
 
       - name: Comprobar que los comandos del laboratorio se codifican
         run: |
-          $sequence = (Get-Content data\sysmon\encode.txt)[0]
-          # whoami (USR), hostname y systeminfo (SID), schtasks (TSK), PowerShell (PSH).
-          foreach ($symbol in 'USR', 'SID', 'TSK', 'PSH') {
-            if ($sequence -notmatch "\b$symbol\b") {
-              Write-Host "Falta $symbol en la secuencia: $sequence"
-              exit 1
+          function Require($file, $symbols, $label) {
+            $sequence = (Get-Content $file)[0]
+            foreach ($symbol in $symbols) {
+              if ($sequence -notmatch "\b$symbol\b") {
+                Write-Host "Falta $symbol en ${label}: $sequence"
+                exit 1
+              }
             }
+            Write-Host "OK ${label}: $sequence"
           }
+          # whoami (USR), hostname y systeminfo (SID), schtasks (TSK), PowerShell (PSH).
+          Require data\sysmon\encode.txt @('USR', 'SID', 'TSK', 'PSH') 'NDJSON exportado'
+          Require data\sysmon\encode-sysmon-evtx.txt @('USR', 'SID', 'TSK', 'PSH') 'Sysmon .evtx'
+          Require data\sysmon\encode-security-evtx.txt @('USR', 'SID', 'TSK') 'Seguridad 4688 .evtx'
           # Símbolos añadidos en la v0.2, de net, ipconfig y tasklist: se informa, sin fallar.
+          $sequence = (Get-Content data\sysmon\encode.txt)[0]
           foreach ($symbol in 'ACD', 'NCD', 'PRC') {
             $seen = if ($sequence -match "\b$symbol\b") { 'sí' } else { 'no' }
             Write-Host "$symbol aparece: $seen"
           }
-          Write-Host "OK: $sequence"
 
-      - uses: actions/upload-artifact@v4
+      # Only ttpblast's own output: the raw .evtx of the runner stay on it.
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: sysmon-lab

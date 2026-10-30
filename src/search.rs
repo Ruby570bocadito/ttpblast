@@ -29,6 +29,9 @@ pub const MAX_HITS: usize = 10;
 pub const DETAILS: usize = 3;
 pub const MAXSPAN: i64 = 7200;
 pub const MAX_GAP: i64 = 3600;
+/// With `--mask`, a query technique that a host repeats this many times is
+/// routine there.
+pub const ROUTINE: usize = 2;
 
 #[derive(Clone)]
 pub struct Options {
@@ -52,11 +55,16 @@ pub struct Options {
     /// Costs of extra host steps.
     pub extra_open: i32,
     pub extra_extend: i32,
+    /// Skip each host's routine for free (`sequence::routine`).
+    pub mask: bool,
+    pub routine: usize,
     pub null_model: NullModel,
     /// 0 = one per core.
     pub threads: usize,
     pub json: bool,
     pub html: Option<String>,
+    /// Print nothing (the HTML report is still written): for `hunt`.
+    pub quiet: bool,
 }
 
 impl Options {
@@ -79,10 +87,13 @@ impl Options {
             gap_extend: align::GAP_EXTEND,
             extra_open: align::EXTRA_OPEN,
             extra_extend: align::EXTRA_EXTEND,
+            mask: false,
+            routine: ROUTINE,
             null_model: NullModel::Tail,
             threads: 0,
             json: false,
             html: None,
+            quiet: false,
         }
     }
 }
@@ -191,9 +202,17 @@ struct Search<'a> {
     /// Hosts in the telemetry, with symbols or not.
     hosts: usize,
     encoded: usize,
+    /// Encoded events that `--mask` treats as routine.
+    masked: usize,
 }
 
 pub fn run(opts: &Options) -> Result<Summary, String> {
+    run_on(opts, &events::load(&opts.events)?)
+}
+
+/// The search on telemetry already loaded: `hunt` reads it once for every
+/// query in the library.
+pub fn run_on(opts: &Options, loaded: &Loaded) -> Result<Summary, String> {
     let started = Instant::now();
     if opts.gap_open < 1 || opts.gap_extend < 0 || opts.gap_extend > opts.gap_open {
         return Err(tr!(
@@ -207,10 +226,17 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
             "--extra-open cannot be negative, and --extra-extend must be between 0 and --extra-open"
         ));
     }
+    if opts.routine < 1 {
+        return Err(tr!(
+            "--routine debe ser al menos 1",
+            "--routine must be at least 1"
+        ));
+    }
     let alphabet = load_alphabet(opts.alphabet.as_deref())?;
     let query = parse_query(&opts.query_text, &alphabet)?;
-    let Loaded { events, skipped } = events::load_ndjson(&opts.events)?;
-    let seqs = sequence::build(&events, &alphabet);
+    let Loaded { events, skipped } = loaded;
+    let skipped = *skipped;
+    let seqs = sequence::build(events, &alphabet);
     if seqs.is_empty() {
         return Err(tr!(
             "ningún evento de {} encaja con el alfabeto (`ttpblast encode --events {} --unmatched 10` enseña qué hay)",
@@ -225,11 +251,31 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
         .with_extras(opts.extra_open, opts.extra_extend);
     let segments: Vec<Vec<Range<usize>>> = seqs
         .iter()
-        .map(|seq| sequence::segments(seq, &events, opts.max_gap))
+        .map(|seq| sequence::segments(seq, events, opts.max_gap))
         .collect();
+    let masks: Vec<Vec<bool>> = seqs
+        .iter()
+        .map(|seq| {
+            if opts.mask {
+                sequence::routine(seq, &query, opts.routine, alphabet.symbols.len())
+            } else {
+                Vec::new()
+            }
+        })
+        .collect();
+    let masked = seqs
+        .iter()
+        .zip(&masks)
+        .map(|(seq, mask)| {
+            seq.symbols
+                .iter()
+                .filter(|&&s| mask.get(s) == Some(&true))
+                .count()
+        })
+        .sum();
 
     let threads = worker_count(opts.threads, seqs.len());
-    let mut hits = evaluate_all(&seqs, &segments, &query, &scoring, opts, threads);
+    let mut hits = evaluate_all(&seqs, &segments, &masks, &query, &scoring, opts, threads);
     hits.sort_by(|a, b| {
         a.evalue
             .total_cmp(&b.evalue)
@@ -238,7 +284,7 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
     });
     let baseline = opts
         .baseline
-        .then(|| baseline_matches(&seqs, &query, &events, opts.maxspan));
+        .then(|| baseline_matches(&seqs, &query, events, opts.maxspan));
 
     let mut hosts: Vec<&str> = events.iter().map(|e| e.host.as_str()).collect();
     hosts.sort_unstable();
@@ -247,7 +293,7 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
         opts,
         alphabet: &alphabet,
         query: &query,
-        events: &events,
+        events,
         skipped,
         seqs: &seqs,
         segments: &segments,
@@ -256,12 +302,13 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
         baseline: baseline.as_deref(),
         hosts: hosts.len(),
         encoded: counts.iter().sum(),
+        masked,
     };
 
     if opts.json {
         let text = serde_json::to_string_pretty(&search.json()).map_err(|e| e.to_string())?;
         println!("{text}");
-    } else {
+    } else if !opts.quiet {
         search.print(started.elapsed(), threads);
     }
     if let Some(path) = &opts.html {
@@ -273,7 +320,7 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
         // Keep stdout pure JSON when it is JSON.
         if opts.json {
             eprintln!("{note}");
-        } else {
+        } else if !opts.quiet {
             println!("{}", paint(note, Style::Quiet));
         }
     }
@@ -305,6 +352,7 @@ fn worker_count(requested: usize, hosts: usize) -> usize {
 fn evaluate_all<'a>(
     seqs: &'a [HostSeq],
     segments: &[Vec<Range<usize>>],
+    masks: &[Vec<bool>],
     query: &[usize],
     scoring: &Scoring,
     opts: &Options,
@@ -316,10 +364,12 @@ fn evaluate_all<'a>(
         loop {
             let i = next.fetch_add(1, Ordering::Relaxed);
             let Some(seq) = seqs.get(i) else { break };
-            done.push((
-                i,
-                evaluate(seq, &segments[i], query, scoring, opts, seqs.len()),
-            ));
+            let host = Host {
+                seq,
+                segments: &segments[i],
+                masked: &masks[i],
+            };
+            done.push((i, evaluate(&host, query, scoring, opts, seqs.len())));
         }
         done
     };
@@ -340,24 +390,54 @@ fn evaluate_all<'a>(
         .collect()
 }
 
-fn evaluate<'a>(
+/// One host as a search sees it.
+struct Host<'a, 'b> {
     seq: &'a HostSeq,
-    segments: &[Range<usize>],
+    /// Its stretches of activity.
+    segments: &'b [Range<usize>],
+    /// Its routine for this query, by symbol (empty without `--mask`).
+    masked: &'b [bool],
+}
+
+impl Host<'_, '_> {
+    /// Best alignment over the host's stretches of activity (first one on ties).
+    fn best(&self, query: &[usize], scoring: &Scoring, masked: &[bool]) -> Option<Alignment> {
+        let mut alignment: Option<Alignment> = None;
+        for range in self.segments {
+            if let Some(found) =
+                align::align(query, &self.seq.symbols[range.clone()], scoring, masked)
+                && alignment
+                    .as_ref()
+                    .is_none_or(|best| found.score > best.score)
+            {
+                alignment = Some(found.shifted(range.start));
+            }
+        }
+        alignment
+    }
+}
+
+fn evaluate<'a>(
+    host: &Host<'a, '_>,
     query: &[usize],
     scoring: &Scoring,
     opts: &Options,
     db_size: usize,
 ) -> Hit<'a> {
-    // Best alignment over the host's stretches of activity (first one on ties).
-    let mut alignment: Option<Alignment> = None;
-    for range in segments {
-        if let Some(found) = align::align(query, &seq.symbols[range.clone()], scoring)
-            && alignment
-                .as_ref()
-                .is_none_or(|best| found.score > best.score)
-        {
-            alignment = Some(found.shifted(range.start));
-        }
+    let seq = host.seq;
+    let mut alignment = host.best(query, scoring, host.masked);
+    // A host whose best alignment skips no routine is judged as without
+    // `--mask`: skipping for free would only make its shuffles score higher.
+    // (Choosing the null model after aligning depends on the data; what that
+    // costs in false alarms is measured in the README.)
+    let mut masked = host.masked;
+    if !masked.is_empty()
+        && alignment
+            .as_ref()
+            .is_none_or(|a| a.masked().next().is_none())
+    {
+        masked = &[];
+        alignment = host.best(query, scoring, masked);
     }
     let score = alignment.as_ref().map_or(0, |a| a.score);
     if score == 0 {
@@ -373,14 +453,20 @@ fn evaluate<'a>(
     // Each host gets its own null model from shuffles of its own symbols,
     // so a host that runs discovery commands all day is not surprising.
     let mut rng = Rng::new(opts.seed ^ rng::fnv1a(&seq.host));
-    // Shuffled symbols, cut into stretches of the same lengths as the real ones.
+    // The routine that the alignment skipped inside the chain (an attacker's
+    // padding, if it is one) is left out of the shuffles: it would lengthen
+    // the chain's stretch, and a long stretch of shuffled symbols resembles
+    // the query more easily.
+    let skipped: Vec<usize> = alignment.iter().flat_map(|a| a.masked()).collect();
     let hit = alignment.as_ref().map(|a| a.host_span());
+    let base = without(&seq.symbols, host.segments, hit, &skipped);
+    // Shuffled symbols, cut into stretches of the same lengths as the real ones.
     let null: Vec<i32> = (0..opts.shuffles)
         .map(|_| {
-            let symbols = shuffled(&seq.symbols, opts.block, hit, &mut rng);
-            segments
+            let shuffled = shuffled(&base.symbols, opts.block, base.hit, &mut rng);
+            base.segments
                 .iter()
-                .map(|range| align::best_score(query, &symbols[range.clone()], scoring))
+                .map(|range| align::best_score(query, &shuffled[range.clone()], scoring, masked))
                 .max()
                 .unwrap_or(0)
         })
@@ -452,6 +538,39 @@ fn shuffled(
     };
     rng.shuffle(&mut chunks);
     chunks.concat()
+}
+
+/// What a host's shuffles start from.
+struct Base {
+    symbols: Vec<usize>,
+    segments: Vec<Range<usize>>,
+    /// The span of the best alignment.
+    hit: Option<(usize, usize)>,
+}
+
+/// The host's symbols without the positions in `skipped` (sorted), with its
+/// stretches and the aligned span moved to match.
+fn without(
+    symbols: &[usize],
+    segments: &[Range<usize>],
+    hit: Option<(usize, usize)>,
+    skipped: &[usize],
+) -> Base {
+    let before = |position: usize| skipped.partition_point(|&s| s < position);
+    Base {
+        symbols: symbols
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| skipped.binary_search(i).is_err())
+            .map(|(_, &symbol)| symbol)
+            .collect(),
+        segments: segments
+            .iter()
+            .map(|r| r.start - before(r.start)..r.end - before(r.end))
+            .filter(|r| !r.is_empty())
+            .collect(),
+        hit: hit.map(|(first, last)| (first - before(first), last - before(last))),
+    }
 }
 
 /// Exact ordered match, like an EQL `sequence ... with maxspan`: every query
@@ -615,8 +734,8 @@ impl<'a> Search<'a> {
             i18n::plural(self.hosts, "host", "hosts"),
             if self.skipped > 0 {
                 tr!(
-                    " · {} líneas ignoradas",
-                    " · {} lines skipped",
+                    " · {} ignorados (ilegibles o sin host)",
+                    " · {} skipped (unreadable or without a host)",
                     i18n::count(self.skipped)
                 )
             } else {
@@ -692,6 +811,18 @@ impl<'a> Search<'a> {
                 align::OTHER_TACTIC
             )
         );
+        if o.mask {
+            println!(
+                "{} {}",
+                label("Máscara", "Mask"),
+                tr!(
+                    "la rutina se salta gratis: lo que no es de la consulta y sus técnicas que un host repite ({} veces o más); {} % de los símbolos",
+                    "routine is skipped for free: what is not in the query, and its techniques a host repeats ({} times or more); {} % of the symbols",
+                    o.routine,
+                    i18n::decimal(100.0 * self.masked as f64 / self.encoded.max(1) as f64, 0)
+                )
+            );
+        }
         let block = if o.block > 1 {
             tr!(
                 "bloques de {}, la región alineada símbolo a símbolo",
@@ -874,6 +1005,17 @@ impl<'a> Search<'a> {
                 self.duration(aln, seq)
             );
         }
+        let masked = aln.masked().count();
+        if masked > 0 {
+            println!(
+                "  {}",
+                tr!(
+                    "rutina saltada gratis: {}, que tampoco entran en los barajados",
+                    "routine skipped for free: {}, also left out of the shuffles",
+                    i18n::plural(masked, t("evento", "event"), t("eventos", "events"))
+                )
+            );
+        }
         let shuffles = hit.null_scores.len();
         let model = match &hit.null {
             Null::Tail { fit, misfit } => Some(tr!(
@@ -905,14 +1047,26 @@ impl<'a> Search<'a> {
         }
         println!();
 
-        // Alignment in three rows, BLAST-style. Pad, then paint.
+        // Alignment in three rows, BLAST-style. Pad, then paint. A run of
+        // masked routine takes one column, with how many events it hides.
         let (mut top, mut mid, mut bottom) = (
             format!("  {:<9}", t("consulta", "query")),
             " ".repeat(11),
             format!("  {:<9}", "host"),
         );
-        for step in &aln.steps {
-            let cell = |text: &str, style: Style| paint(format!(" {text:<4}"), style);
+        let cell = |text: &str, style: Style| paint(format!(" {text:<4}"), style);
+        let mut run = 0;
+        for (i, step) in aln.steps.iter().enumerate() {
+            if let Step::Masked { .. } = step {
+                run += 1;
+                if !matches!(aln.steps.get(i + 1), Some(Step::Masked { .. })) {
+                    top.push_str(&cell("···", Style::Quiet));
+                    mid.push_str("     ");
+                    bottom.push_str(&cell(&format!("({run})"), Style::Quiet));
+                    run = 0;
+                }
+                continue;
+            }
             match *step {
                 Step::Pair { q, t } => {
                     let (a, b) = (self.query[q], seq.symbols[t]);
@@ -934,6 +1088,7 @@ impl<'a> Search<'a> {
                     mid.push_str("     ");
                     bottom.push_str(&cell("---", Style::Quiet));
                 }
+                Step::Masked { .. } => {}
             }
         }
         println!(
@@ -970,6 +1125,15 @@ impl<'a> Search<'a> {
                     seq.symbols[t],
                     &paint(
                         format!("{:<15}", i18n::t("paso extra", "extra step")),
+                        Style::Quiet,
+                    ),
+                    seq.events[t],
+                ),
+                Step::Masked { t } => self.print_evidence(
+                    i18n::t("rutina", "routine"),
+                    seq.symbols[t],
+                    &paint(
+                        format!("{:<15}", i18n::t("se salta gratis", "skipped, free")),
                         Style::Quiet,
                     ),
                     seq.events[t],
@@ -1170,6 +1334,7 @@ impl<'a> Search<'a> {
                 "hosts_with_symbols": self.seqs.len(),
                 "stretches": self.stretches(),
                 "alphabet_size": self.alphabet.symbols.len(),
+                "masked_events": self.masked,
             },
             "settings": {
                 "shuffles": o.shuffles,
@@ -1184,6 +1349,8 @@ impl<'a> Search<'a> {
                 "extra_extend": self.scoring.extra_extend,
                 "same_tactic": align::SAME_TACTIC,
                 "other_tactic": align::OTHER_TACTIC,
+                "mask": o.mask,
+                "routine": o.routine,
             },
             "summary": {
                 "strong_threshold": ui::STRONG,
@@ -1233,10 +1400,10 @@ impl<'a> Search<'a> {
                         "event": describe(&self.events[seq.events[t]]),
                     })
                 }
-                Step::Extra { t } => {
+                Step::Extra { t } | Step::Masked { t } => {
                     let s = host_symbol(t);
                     json!({
-                        "kind": "extra",
+                        "kind": if matches!(step, Step::Masked { .. }) { "masked" } else { "extra" },
                         "host": s.code,
                         "technique": s.technique,
                         "tactic": s.tactic,
@@ -1303,6 +1470,7 @@ impl<'a> Search<'a> {
             "identical": identical,
             "substituted": substituted,
             "gaps": gaps,
+            "masked": aln.masked().count(),
             "null": null_model,
             "alignment": steps,
         })
@@ -1399,14 +1567,15 @@ fn describe(event: &Event) -> String {
     }
 }
 
-/// (identical pairs, substituted pairs, gap positions).
+/// (identical pairs, substituted pairs, gap positions). Masked routine is not
+/// a gap: it costs nothing.
 fn counts(aln: &Alignment, query: &[usize], seq: &HostSeq) -> (usize, usize, usize) {
     let identical = aln
         .pairs()
         .filter(|&(q, t)| query[q] == seq.symbols[t])
         .count();
     let substituted = aln.pairs().count() - identical;
-    let gaps = aln.steps.len() - identical - substituted;
+    let gaps = aln.steps.len() - identical - substituted - aln.masked().count();
     (identical, substituted, gaps)
 }
 
@@ -1505,6 +1674,7 @@ mod tests {
             baseline: None,
             hosts: 1,
             encoded: 3,
+            masked: 0,
         };
         let v = search.hit_json(1, &hits[0]);
         assert_eq!(v["host"], "pc");
@@ -1522,6 +1692,126 @@ mod tests {
         let doc = search.json();
         assert_eq!(doc["summary"]["weak"], json!(["pc"]));
         assert_eq!(doc["query"]["symbols"][1]["technique"], "T1082");
+
+        // Masked routine is listed, but it is not a gap.
+        let masked = Hit {
+            seq: &seqs[0],
+            alignment: Some(Alignment {
+                score: 3,
+                steps: vec![
+                    Step::Pair { q: 0, t: 0 },
+                    Step::Masked { t: 1 },
+                    Step::Pair { q: 1, t: 2 },
+                ],
+            }),
+            p: 0.5,
+            evalue: 0.5,
+            null: Null::Empirical,
+            null_scores: vec![1, 3, 3, 2],
+        };
+        let v = search.hit_json(1, &masked);
+        assert_eq!(v["alignment"][1]["kind"], "masked");
+        assert_eq!(v["alignment"][1]["host"], "USR");
+        assert_eq!(
+            (v["gaps"].as_u64(), v["masked"].as_u64()),
+            (Some(0), Some(1))
+        );
+    }
+
+    /// A workstation's two weeks, compressed: routine in stretches of three
+    /// and, in a stretch of its own, the demo chain with `padding` routine
+    /// commands between every two steps.
+    fn padded_host(padding: usize) -> (Alphabet, Vec<usize>, HostSeq, Vec<Range<usize>>) {
+        let alphabet = Alphabet::default_set();
+        let code = |c: &str| alphabet.lookup(c).unwrap();
+        let query: Vec<usize> = [
+            "UEX", "PSH", "C2W", "ITT", "RUN", "USR", "SID", "LSA", "SMB",
+        ]
+        .iter()
+        .map(|c| code(c))
+        .collect();
+        let routine = [
+            "CMD", "PSH", "TSK", "NCD", "PRC", "WSH", "ARC", "C2W", "ACD",
+        ];
+        let mut rng = Rng::new(11);
+        let mut symbols: Vec<usize> = (0..60)
+            .map(|_| code(routine[rng.below(routine.len() as u64) as usize]))
+            .collect();
+        let mut segments: Vec<Range<usize>> = (0..20).map(|i| 3 * i..3 * i + 3).collect();
+        let start = symbols.len();
+        for (i, &step) in query.iter().enumerate() {
+            if i > 0 {
+                for _ in 0..padding {
+                    symbols.push(code(["CMD", "TSK", "NCD", "PRC"][rng.below(4) as usize]));
+                }
+            }
+            symbols.push(step);
+        }
+        segments.push(start..symbols.len());
+        let seq = HostSeq {
+            host: "ws-legal-02".into(),
+            events: vec![0; symbols.len()],
+            symbols,
+        };
+        (alphabet, query, seq, segments)
+    }
+
+    fn evaluate_padded(padding: usize, mask: bool) -> (i32, usize, f64) {
+        let (alphabet, query, seq, segments) = padded_host(padding);
+        // Every symbol equally rare, so that padding does not change the scores.
+        let scoring = Scoring::from_background(&alphabet, &vec![5; alphabet.symbols.len()]);
+        let masked = if mask {
+            sequence::routine(&seq, &query, ROUTINE, alphabet.symbols.len())
+        } else {
+            Vec::new()
+        };
+        let host = Host {
+            seq: &seq,
+            segments: &segments,
+            masked: &masked,
+        };
+        let hit = evaluate(&host, &query, &scoring, &Options::new("q", "", "e"), 40);
+        let aln = hit.alignment.as_ref().unwrap();
+        (aln.score, aln.masked().count(), hit.evalue)
+    }
+
+    #[test]
+    fn the_mask_sees_through_padding() {
+        let (plain, _, e_plain) = evaluate_padded(0, false);
+        let (padded, _, e_padded) = evaluate_padded(2, false);
+        let (masked, skipped, e_masked) = evaluate_padded(2, true);
+        // Padding sinks the score; with the mask, the 16 commands are
+        // skipped for free and the chain scores as if they were not there.
+        assert!(padded < plain - 10, "{padded} vs {plain}");
+        assert_eq!((masked, skipped), (plain, 16));
+        assert!(e_padded > 1.0, "{e_padded}");
+        assert!(e_masked < 0.01 && e_plain < 0.01, "{e_masked} {e_plain}");
+    }
+
+    #[test]
+    fn the_mask_changes_nothing_when_nothing_is_skipped() {
+        // Without padding the chain needs no routine skipped: same alignment,
+        // same null model, same E-value as without the mask.
+        let (score, skipped, evalue) = evaluate_padded(0, true);
+        assert_eq!(skipped, 0);
+        assert_eq!((score, evalue), {
+            let (s, _, e) = evaluate_padded(0, false);
+            (s, e)
+        });
+    }
+
+    #[test]
+    fn without_moves_stretches_and_hit() {
+        let symbols: Vec<usize> = (10..20).collect();
+        let segments = vec![0..3, 3..9, 9..10];
+        let base = without(&symbols, &segments, Some((3, 8)), &[4, 5, 7]);
+        assert_eq!(base.symbols, [10, 11, 12, 13, 16, 18, 19]);
+        assert_eq!(base.segments, [0..3, 3..6, 6..7]);
+        assert_eq!(base.hit, Some((3, 5)));
+        // Nothing skipped, nothing moves.
+        let same = without(&symbols, &segments, Some((2, 4)), &[]);
+        assert_eq!((same.symbols, same.segments), (symbols, segments));
+        assert_eq!(same.hit, Some((2, 4)));
     }
 
     #[test]
@@ -1576,15 +1866,22 @@ mod tests {
         let scoring = Scoring::from_background(&alphabet, &vec![5; alphabet.symbols.len()]);
         let mut opts = Options::new("q", "", "e");
         opts.shuffles = 30;
-        let run = |threads| -> Vec<(String, i32, f64)> {
-            evaluate_all(&seqs, &segments, &query, &scoring, &opts, threads)
-                .iter()
-                .map(|h| (h.seq.host.clone(), h.score(), h.p))
-                .collect()
-        };
-        let one = run(1);
-        assert_eq!(one, run(4));
-        assert_eq!(one, run(16));
+        let none = vec![Vec::new(); seqs.len()];
+        let routine: Vec<Vec<bool>> = seqs
+            .iter()
+            .map(|s| sequence::routine(s, &query, 4, alphabet.symbols.len()))
+            .collect();
+        for masks in [&none, &routine] {
+            let run = |threads| -> Vec<(String, i32, f64)> {
+                evaluate_all(&seqs, &segments, masks, &query, &scoring, &opts, threads)
+                    .iter()
+                    .map(|h| (h.seq.host.clone(), h.score(), h.p))
+                    .collect()
+            };
+            let one = run(1);
+            assert_eq!(one, run(4));
+            assert_eq!(one, run(16));
+        }
     }
 
     #[test]

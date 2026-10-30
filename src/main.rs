@@ -9,6 +9,9 @@ mod alphabet;
 mod demo;
 mod encode;
 mod events;
+mod evtx;
+mod hunt;
+mod library;
 mod report;
 mod rng;
 mod search;
@@ -18,6 +21,7 @@ mod synth;
 mod sysmon;
 mod time;
 mod ui;
+mod windows;
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
@@ -27,10 +31,12 @@ use std::str::FromStr;
 use i18n::t;
 use ui::{ColorChoice, Style, paint};
 
-const COMMANDS: [&str; 6] = ["search", "demo", "synth", "encode", "alphabet", "help"];
+const COMMANDS: [&str; 7] = [
+    "search", "hunt", "demo", "synth", "encode", "alphabet", "help",
+];
 
 /// Options every search takes, from `search` and from `demo`.
-const SEARCH_SETTINGS: [&str; 14] = [
+const SEARCH_SETTINGS: [&str; 15] = [
     "alphabet",
     "shuffles",
     "block",
@@ -43,6 +49,7 @@ const SEARCH_SETTINGS: [&str; 14] = [
     "gap-extend",
     "extra-open",
     "extra-extend",
+    "routine",
     "null",
     "threads",
 ];
@@ -83,6 +90,7 @@ fn run(mut args: Vec<String>) -> Result<(), String> {
     }
     match command.as_str() {
         "search" => cmd_search(rest),
+        "hunt" => cmd_hunt(rest),
         "demo" => cmd_demo(rest),
         "synth" => cmd_synth(rest),
         "encode" => cmd_encode(rest),
@@ -109,7 +117,12 @@ fn run(mut args: Vec<String>) -> Result<(), String> {
 fn cmd_search(rest: &[String]) -> Result<(), String> {
     let mut with_value = vec!["query", "events", "seed", "html"];
     with_value.extend(SEARCH_SETTINGS);
-    let flags = Flags::parse("search", rest, &with_value, &["no-baseline", "json"])?;
+    let flags = Flags::parse(
+        "search",
+        rest,
+        &with_value,
+        &["no-baseline", "json", "mask"],
+    )?;
     let path = flags.required("query")?;
     let text = std::fs::read_to_string(path)
         .map_err(|e| tr!("no se puede leer {path}: {e}", "cannot read {path}: {e}"))?;
@@ -139,6 +152,8 @@ fn search_settings(flags: &Flags, base: search::Options) -> Result<search::Optio
         gap_extend: flags.number("gap-extend", base.gap_extend)?,
         extra_open: flags.number("extra-open", base.extra_open)?,
         extra_extend: flags.number("extra-extend", base.extra_extend)?,
+        mask: flags.has("mask"),
+        routine: flags.number("routine", base.routine)?,
         null_model: match flags.text("null") {
             Some(model) => search::NullModel::parse(model)?,
             None => base.null_model,
@@ -148,10 +163,31 @@ fn search_settings(flags: &Flags, base: search::Options) -> Result<search::Optio
     })
 }
 
+fn cmd_hunt(rest: &[String]) -> Result<(), String> {
+    let mut with_value = vec!["events", "queries", "html", "seed"];
+    with_value.extend(SEARCH_SETTINGS);
+    let flags = Flags::parse("hunt", rest, &with_value, &["json", "no-baseline", "mask"])?;
+    let events = flags.required("events")?;
+    let mut search = search_settings(&flags, search::Options::new("", "", events))?;
+    search.seed = flags.number("seed", search::SEED)?;
+    hunt::run(&hunt::Options {
+        events: events.to_string(),
+        queries: flags.text("queries").map(str::to_string),
+        html: flags.text("html").map(str::to_string),
+        json: flags.has("json"),
+        search,
+    })
+}
+
 fn cmd_demo(rest: &[String]) -> Result<(), String> {
     let mut with_value = vec!["out", "days", "seed", "padding"];
     with_value.extend(SEARCH_SETTINGS);
-    let flags = Flags::parse("demo", rest, &with_value, &["no-html", "no-baseline"])?;
+    let flags = Flags::parse(
+        "demo",
+        rest,
+        &with_value,
+        &["no-html", "no-baseline", "mask"],
+    )?;
     demo::run(&demo::Options {
         synth: synth_options(&flags)?,
         html: !flags.has("no-html"),
@@ -361,6 +397,7 @@ tells you, with an E-value, whether the resemblance is chance.
 
 {commands}
   search      search the telemetry for an attack chain
+  hunt        every query in the library at once: one verdict per query
   demo        the guided demo
   synth       generate synthetic telemetry with hidden attack chains
   encode      each host's \"genome\": its events written as symbols
@@ -377,6 +414,7 @@ tells you, with an E-value, whether the resemblance is chance.
   ttpblast search --query queries/phishing-lateral.txt --events data/demo/events.ndjson
   ttpblast search ... --html report.html     visual report for the browser
   ttpblast search ... --json                 for scripts and other tools
+  ttpblast hunt --events logs/                 every query, over a folder of .evtx files
   ttpblast encode --events data/sysmon/events.ndjson --unmatched 15
 
 More at https://github.com/Ruby570bocadito/ttpblast
@@ -399,6 +437,7 @@ equipos y te dice, con un E-value, si el parecido es casualidad.
 
 {commands}
   search      busca una cadena de ataque en la telemetría
+  hunt        toda la biblioteca de consultas de una vez: un veredicto por consulta
   demo        la demo guiada
   synth       genera telemetría sintética con cadenas de ataque escondidas
   encode      el «genoma» de cada host: sus eventos convertidos en símbolos
@@ -415,6 +454,7 @@ equipos y te dice, con un E-value, si el parecido es casualidad.
   ttpblast search --query queries/phishing-lateral.txt --events data/demo/events.ndjson
   ttpblast search ... --html informe.html    informe visual para el navegador
   ttpblast search ... --json                 para scripts y otras herramientas
+  ttpblast hunt --events registros/           todas las consultas, sobre una carpeta de .evtx
   ttpblast encode --events data/sysmon/events.ndjson --unmatched 15
 
 Más en https://github.com/Ruby570bocadito/ttpblast
@@ -443,7 +483,8 @@ fn command_help(command: &str) -> Result<(), String> {
 {}
   --query FICHERO       la cadena: códigos de símbolo o IDs de técnica, en orden
                         (ejemplos en queries/; `ttpblast alphabet` lista los códigos)
-  --events FICHERO      telemetría NDJSON: ECS, Sysmon exportado o Winlogbeat
+  --events RUTA         telemetría: .evtx, NDJSON (ECS, Sysmon exportado,
+                        Winlogbeat) o una carpeta con varios
   --alphabet FICHERO    alfabeto JSON (por defecto, el incluido)
 
 {}
@@ -462,6 +503,11 @@ fn command_help(command: &str) -> Result<(), String> {
   --gap-extend N        coste de cada otro paso que falta seguido ({})
   --extra-open N        coste de un paso de más en el host ({})
   --extra-extend N      coste de cada otro paso de más seguido ({})
+  --mask                enmascara la rutina de cada host: lo que no es de la
+                        consulta y sus técnicas que el host repite se saltan
+                        gratis (contra el relleno entre pasos)
+  --routine N           con --mask, cuántas veces tiene que repetir un host una
+                        técnica de la consulta para que sea rutina allí ({})
 
 {}
   --shuffles N          secuencias barajadas por host para calibrar ({})
@@ -485,6 +531,7 @@ fn command_help(command: &str) -> Result<(), String> {
             align::GAP_EXTEND,
             align::EXTRA_OPEN,
             align::EXTRA_EXTEND,
+            search::ROUTINE,
             heading("Significación"),
             search::SHUFFLES,
             search::BLOCK,
@@ -498,7 +545,8 @@ fn command_help(command: &str) -> Result<(), String> {
 {}
   --query FILE          the chain: symbol codes or technique IDs, in order
                         (examples in queries/; `ttpblast alphabet` lists the codes)
-  --events FILE         NDJSON telemetry: ECS, exported Sysmon or Winlogbeat
+  --events PATH         telemetry: .evtx, NDJSON (ECS, exported Sysmon,
+                        Winlogbeat) or a folder with several
   --alphabet FILE       JSON alphabet (the built-in one by default)
 
 {}
@@ -517,6 +565,11 @@ fn command_help(command: &str) -> Result<(), String> {
   --gap-extend N        cost of each further missing step in a row ({})
   --extra-open N        cost of an extra step on the host ({})
   --extra-extend N      cost of each further extra step in a row ({})
+  --mask                mask each host's routine: what is not in the query, and
+                        its techniques the host repeats, are skipped for free
+                        (against padding between steps)
+  --routine N           with --mask, how many times a host must repeat a query
+                        technique for it to be routine there ({})
 
 {}
   --shuffles N          shuffled sequences per host to calibrate ({})
@@ -540,10 +593,57 @@ fn command_help(command: &str) -> Result<(), String> {
             align::GAP_EXTEND,
             align::EXTRA_OPEN,
             align::EXTRA_EXTEND,
+            search::ROUTINE,
             heading("Significance"),
             search::SHUFFLES,
             search::BLOCK,
             search::SEED,
+        ),
+        ("hunt", false) => format!(
+            "{}
+{}
+  ttpblast hunt --events FICHERO|CARPETA [opciones]
+
+Pasa todas las consultas de la biblioteca (o de una carpeta) por la misma
+telemetría, leída una sola vez, y da un veredicto por consulta. Los hosts que
+señalan varias consultas salen aparte: es lo primero que conviene mirar.
+
+{}
+  --events RUTA        telemetría: .evtx, NDJSON o una carpeta con varios
+  --queries CARPETA    consultas (.txt) de esa carpeta en vez de la biblioteca
+                       incluida ({} consultas)
+  --html CARPETA       además, un informe HTML por consulta en esa carpeta
+  --json               resultados en JSON, para scripts y otras herramientas
+  --shuffles N, --block N, --null MODELO, --max-gap SEG, --gap-open N,
+  --extra-open N, --mask, --seed N, --threads N…: como en `ttpblast search`
+",
+            title("toda la biblioteca de consultas de una vez"),
+            heading("Uso"),
+            heading("Opciones"),
+            library::LIBRARY.len(),
+        ),
+        ("hunt", true) => format!(
+            "{}
+{}
+  ttpblast hunt --events FILE|FOLDER [options]
+
+Runs every query in the library (or in a folder) over the same telemetry,
+read once, and gives one verdict per query. Hosts that several queries point
+at get their own line: that is where to look first.
+
+{}
+  --events PATH        telemetry: .evtx, NDJSON or a folder with several
+  --queries FOLDER     the queries (.txt) in that folder instead of the
+                       built-in library ({} queries)
+  --html FOLDER        also one HTML report per query in that folder
+  --json               results as JSON, for scripts and other tools
+  --shuffles N, --block N, --null MODEL, --max-gap SECS, --gap-open N,
+  --extra-open N, --mask, --seed N, --threads N…: as in `ttpblast search`
+",
+            title("every query in the library at once"),
+            heading("Usage"),
+            heading("Options"),
+            library::LIBRARY.len(),
         ),
         ("demo", false) => format!(
             "{}
@@ -560,9 +660,12 @@ encontrado con la verdad.
   --seed N           semilla de la telemetría ({})
   --padding N        comandos de relleno entre cada dos pasos de cada cadena,
                      para ver cuánto cuesta esconderla (0)
+  --mask             enmascara la rutina de cada host, para ver a través del
+                     relleno
   --no-html          sin informes HTML
   --details N, --shuffles N, --block N, --null MODELO, --max-gap SEG,
-  --gap-open N, --extra-open N, --threads N…: como en `ttpblast search`
+  --gap-open N, --extra-open N, --routine N, --threads N…: como en
+  `ttpblast search`
 ",
             title("la demo guiada"),
             heading("Uso"),
@@ -586,9 +689,11 @@ found with the truth.
   --seed N           telemetry seed ({})
   --padding N        padding commands between every two steps of each chain,
                      to see how much it takes to hide it (0)
+  --mask             mask each host's routine, to see through the padding
   --no-html          no HTML reports
   --details N, --shuffles N, --block N, --null MODEL, --max-gap SECS,
-  --gap-open N, --extra-open N, --threads N…: as in `ttpblast search`
+  --gap-open N, --extra-open N, --routine N, --threads N…: as in
+  `ttpblast search`
 ",
             title("the guided demo"),
             heading("Usage"),

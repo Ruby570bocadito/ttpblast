@@ -1,0 +1,11 @@
+# Acceso remoto persistente con una herramienta legítima.
+# Genérica, cada vez más común: tras mirar dónde ha caído, el atacante abre
+# un hueco en Microsoft Defender e instala un software de acceso remoto
+# (AnyDesk, ScreenConnect…) que se confunde con el del soporte técnico, y lo
+# deja como servicio para volver cuando quiera.
+
+USR   # T1033      ¿quién soy? (whoami)
+SID   # T1082      información del sistema
+DEF   # T1562.001  exclusiones o políticas de Defender
+RMM   # T1219      software de acceso remoto
+SVC   # T1543.003  instalado como servicio

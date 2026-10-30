@@ -7,8 +7,8 @@
    personales: el exportador de Sysmon ya deja fuera usuarios y líneas de comandos.
 2. **Consultas** nuevas para [`queries/`](queries/), con su historia.
 3. **Símbolos** para el alfabeto que cubran técnicas habituales en intrusiones.
-4. Ideas para la [hoja de ruta](README.md#hoja-de-ruta), sobre todo para enmascarar la
-   rutina de cada host y resistir el relleno.
+4. Ideas para la [hoja de ruta](README.md#hoja-de-ruta), sobre todo para resistir otras
+   formas de esconderse: pasos en otro orden, repartidos en el tiempo o entre hosts.
 
 *In English: issues and pull requests in English are just as welcome. The code comments are
 in English; user-facing text is in Spanish and English.*
@@ -49,8 +49,30 @@ algo ha cambiado en la detección y hay que explicarlo.
   por paso, como [`queries/exfiltracion.txt`](queries/exfiltracion.txt).
 - Patrones genéricos, de los que publican los informes de respuesta a incidentes: nada de
   indicadores concretos de una campaña.
-- Pásala por la telemetría de la demo: si no hay ninguna cadena parecida inyectada, ningún
-  host debería salir con E ≤ 1.
+- Añádela también a `LIBRARY` en [`src/library.rs`](src/library.rs), para que vaya dentro
+  del binario y la use `hunt`; un test comprueba que la carpeta y la lista coinciden.
+- Pásala por la telemetría de la demo con `ttpblast hunt --events data/demo/events.ndjson`:
+  si no hay ninguna cadena parecida inyectada, lo normal es que ningún host salga con
+  E ≤ 0,01, y como mucho alguno suelto con E ≤ 1.
+
+## Lector de `.evtx`
+
+[`src/evtx.rs`](src/evtx.rs) no depende de nada, y por eso hay que vigilarlo: si tocas el
+lector, compáralo con el de Windows en registros reales. El test
+`matches_windows_on_a_real_file` no corre por defecto. Saca con `Get-WinEvent` los primeros
+3.000 registros del fichero que le des y los compara uno a uno con lo que lee ttpblast: ID,
+proveedor, equipo, hora y cada valor de `EventData`. Solo funciona en Windows, y el fichero
+no sale de tu máquina:
+
+```powershell
+wevtutil epl Application $env:TEMP\Application.evtx
+$env:TTPBLAST_EVTX = "$env:TEMP\Application.evtx"
+cargo test --release matches_windows_on_a_real_file -- --ignored --nocapture
+```
+
+Tiene que acabar en «0 sin leer, 0 diferencias». Para Sysmon o Seguridad hace falta una
+PowerShell de administrador. Nunca subas un `.evtx` real al repositorio: los tests usan
+uno que se construye en memoria (`evtx::tests::Writer`).
 
 ## Telemetría sintética
 
@@ -67,7 +89,8 @@ README (en los dos idiomas):
 ```bash
 python experiments/calibracion.py --seeds 20
 python experiments/calibracion.py --seeds 20 --extra="--block 1" --work data/calibracion-b1
-python experiments/evasion.py --seeds 20 --gaps 4/1,4/1:0/0
+python experiments/calibracion.py --seeds 20 --extra="--mask" --work data/calibracion-mascara
+python experiments/evasion.py --seeds 20 --gaps 4/1,4/1:0/0 --mask
 ```
 
 Cuenta también lo que no funcionó: el README tiene una sección para eso, y es de las más

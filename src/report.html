@@ -115,6 +115,7 @@ header.top { display: grid; grid-template-columns: auto 1fr; gap: 20px 28px; ali
 .cell.missing { border: 1px dashed var(--faint); }
 .cell.outside { background: var(--line); opacity: .55; }
 .extra { width: 3px; height: 18px; background: var(--faint); border-radius: 2px; flex: none; margin: 0 1px; }
+.extra.masked { height: 8px; background: transparent; border: 1px dotted var(--faint); }
 .signal { display: inline-block; height: 8px; border-radius: 4px; vertical-align: middle; margin-right: 8px; }
 .e-strong { color: var(--alert); font-weight: 650; }
 .e-weak { color: var(--warn); font-weight: 600; }
@@ -140,6 +141,7 @@ header.top { display: grid; grid-template-columns: auto 1fr; gap: 20px 28px; ali
 .tile.similar { background: var(--similar-soft); color: var(--similar); border-color: color-mix(in srgb, var(--similar) 40%, transparent); }
 .tile.different { background: var(--different-soft); color: var(--different); border-color: color-mix(in srgb, var(--different) 40%, transparent); }
 .tile.gap { color: var(--faint); border-style: dashed; background: transparent; }
+.tile.masked { color: var(--faint); border-style: dotted; background: transparent; font-size: 11px; }
 .mark { text-align: center; font-family: var(--mono); font-weight: 700; }
 .mark.identical { color: var(--same); }
 .mark.similar { color: var(--similar); }
@@ -156,6 +158,8 @@ header.top { display: grid; grid-template-columns: auto 1fr; gap: 20px 28px; ali
 .badge.similar { background: var(--similar-soft); color: var(--similar); }
 .badge.different { background: var(--different-soft); color: var(--different); }
 .badge.extra, .badge.missing { background: transparent; color: var(--faint); border: 1px dashed var(--faint); }
+.badge.masked { background: transparent; color: var(--faint); border: 1px dotted var(--faint); }
+.evidence tr.masked td { color: var(--faint); }
 .svg-text { font: 11px var(--sans); fill: var(--muted); }
 .svg-mono { font: 11px var(--mono); }
 
@@ -218,7 +222,7 @@ button.dl:hover { border-color: var(--brand); }
       exact: (hs) => hs.length === 0 ? "La búsqueda exacta no encuentra nada." : `La búsqueda exacta encuentra ${hs.length === 1 ? "1 host" : hs.length + " hosts"}:`,
       overview: "Vista general",
       cols: ["#", "host", "alineamiento con la consulta", "E-value", "punt.", "duración"],
-      legend: { identical: "idéntico", similar: "misma táctica", different: "otra táctica", missing: "falta", outside: "fuera del alineamiento", extra: "pasos extra" },
+      legend: { identical: "idéntico", similar: "misma táctica", different: "otra táctica", missing: "falta", outside: "fuera del alineamiento", extra: "pasos extra", masked: "rutina saltada gratis (--mask)" },
       noHits: (e) => `Ningún resultado con E ≤ ${e}.`,
       details: "Resultados en detalle",
       score: "puntuación", alignment: "Alineamiento", chance: "Esta cadena frente al azar", evidence: "Las pruebas", timeline: "Cronología",
@@ -227,8 +231,10 @@ button.dl:hover { border-color: var(--brand); }
       chanceInside: (n, s, p, e) => `En ${n} barajados del propio host, puntuaciones como ${s} aparecen con frecuencia: P(S ≥ ${s}) ≈ ${p}, E = ${e}.`,
       axisY: "barajados con esa puntuación (escala log)", axisX: "puntuación", modelLine: "lo que predice el modelo", thisChain: "esta cadena",
       misfitBad: "⚠ ajuste dudoso: la cola no parece exponencial; E-values muy pequeños, con cautela.",
-      rel: { identical: "idéntico", similar: "similar a", different: "distinto de", extra: "paso extra", missing: "falta" },
-      stepN: (n) => `paso ${n}`, extraStep: "extra", notSeen: "no aparece en el host",
+      rel: { identical: "idéntico", similar: "similar a", different: "distinto de", extra: "paso extra", missing: "falta", masked: "se salta gratis" },
+      stepN: (n) => `paso ${n}`, extraStep: "extra", maskedStep: "rutina", notSeen: "no aparece en el host",
+      maskedRun: (n) => n === 1 ? "1 evento de rutina, saltado gratis" : `${n} eventos de rutina, saltados gratis`,
+      maskOn: (r) => `rutina enmascarada: lo que no es de la consulta y sus técnicas que un host repite (${r} veces o más)`,
       baseline: "Línea base: búsqueda exacta",
       baselineText: (m) => `Todos los pasos, en orden, en ≤ ${m} min (como \`sequence … with maxspan\` de EQL).`,
       baselineNone: "No encuentra ningún host.",
@@ -237,6 +243,7 @@ button.dl:hover { border-color: var(--brand); }
         ["E-value", "Cuántos hosts esperarías ver con un parecido así de bueno por puro azar. E = 2·10⁻⁶ es «casi imposible»; E = 3 es «lo normal en 3 hosts». Es el mismo número que da BLAST para el ADN."],
         ["Cada host contra sí mismo", "El azar de cada host se mide barajando sus propios símbolos. Un administrador hace descubrimiento todo el día, así que sus parecidos parciales no sorprenden; en un portátil de ventas, sí."],
         ["Alineamiento", "Idéntico (verde): el mismo paso. Misma táctica (ámbar): una técnica sustituida por otra parecida, como cmd por PowerShell. Huecos: pasos de más en el host o que faltan."],
+        ["Rutina (--mask)", "Con --mask, lo que no es de la consulta y las técnicas de la consulta que el host repite se saltan gratis: un atacante ya no esconde la cadena intercalando comandos corrientes. Esa rutina tampoco entra en los barajados de ese host."],
         ["Límites", "Demo de investigación: la matriz de puntuación es inicial y la calibración solo se ha medido con telemetría sintética. Un E-value pequeño es un motivo para mirar, no un veredicto final."]
       ],
       more: "Más en el repositorio",
@@ -265,7 +272,7 @@ button.dl:hover { border-color: var(--brand); }
       exact: (hs) => hs.length === 0 ? "The exact search finds nothing." : `The exact search finds ${hs.length === 1 ? "1 host" : hs.length + " hosts"}:`,
       overview: "Overview",
       cols: ["#", "host", "alignment with the query", "E-value", "score", "duration"],
-      legend: { identical: "identical", similar: "same tactic", different: "other tactic", missing: "missing", outside: "outside the alignment", extra: "extra steps" },
+      legend: { identical: "identical", similar: "same tactic", different: "other tactic", missing: "missing", outside: "outside the alignment", extra: "extra steps", masked: "routine skipped for free (--mask)" },
       noHits: (e) => `No hit with E ≤ ${e}.`,
       details: "Hits in detail",
       score: "score", alignment: "Alignment", chance: "This chain against chance", evidence: "The evidence", timeline: "Timeline",
@@ -274,8 +281,10 @@ button.dl:hover { border-color: var(--brand); }
       chanceInside: (n, s, p, e) => `In ${n} shuffles of the host itself, scores like ${s} are common: P(S ≥ ${s}) ≈ ${p}, E = ${e}.`,
       axisY: "shuffles with that score (log scale)", axisX: "score", modelLine: "what the model predicts", thisChain: "this chain",
       misfitBad: "⚠ doubtful fit: the tail does not look exponential; read very small E-values with care.",
-      rel: { identical: "identical", similar: "similar to", different: "unlike", extra: "extra step", missing: "missing" },
-      stepN: (n) => `step ${n}`, extraStep: "extra", notSeen: "not seen on the host",
+      rel: { identical: "identical", similar: "similar to", different: "unlike", extra: "extra step", missing: "missing", masked: "skipped for free" },
+      stepN: (n) => `step ${n}`, extraStep: "extra", maskedStep: "routine", notSeen: "not seen on the host",
+      maskedRun: (n) => n === 1 ? "1 routine event, skipped for free" : `${n} routine events, skipped for free`,
+      maskOn: (r) => `routine masked: what is not in the query, and its techniques a host repeats (${r} times or more)`,
       baseline: "Baseline: exact search",
       baselineText: (m) => `Every step, in order, within ${m} min (like EQL's \`sequence … with maxspan\`).`,
       baselineNone: "It finds no host.",
@@ -284,6 +293,7 @@ button.dl:hover { border-color: var(--brand); }
         ["E-value", "How many hosts you would expect to see with a resemblance this good by pure chance. E = 2·10⁻⁶ is \"nearly impossible\"; E = 3 is \"normal on 3 hosts\". It is the same number BLAST gives for DNA."],
         ["Each host against itself", "Each host's chance is measured by shuffling its own symbols. An admin runs discovery all day, so their partial resemblances are no surprise; on a sales laptop, they are."],
         ["Alignment", "Identical (green): the same step. Same tactic (amber): a technique swapped for a similar one, like cmd for PowerShell. Gaps: extra steps on the host, or missing ones."],
+        ["Routine (--mask)", "With --mask, what is not in the query, and the query's techniques that the host repeats, are skipped for free: an attacker no longer hides the chain by slipping ordinary commands in between. That routine is left out of the host's shuffles too."],
         ["Limits", "Research demo: the scoring matrix is a first version and calibration has only been measured on synthetic telemetry. A small E-value is a reason to look, not a final verdict."]
       ],
       more: "More in the repository",
@@ -345,16 +355,17 @@ button.dl:hover { border-color: var(--brand); }
   // came after it.
   function track(hit) {
     const n = DATA.query.steps.length;
-    const cells = Array.from({ length: n }, () => ({ kind: "outside", extras: 0 }));
+    const cells = Array.from({ length: n }, () => ({ kind: "outside", extras: 0, masked: 0 }));
     let last = -1;
     let before = 0;
     for (const st of hit.alignment) {
-      if (st.kind === "extra") {
-        if (last >= 0) cells[last].extras += 1; else before += 1;
+      if (st.kind === "extra" || st.kind === "masked") {
+        const key = st.kind === "extra" ? "extras" : "masked";
+        if (last >= 0) cells[last][key] += 1; else before += 1;
         continue;
       }
       const q = st.query_step - 1;
-      cells[q] = { kind: st.kind === "missing" ? "missing" : st.relation, extras: 0, step: st };
+      cells[q] = { kind: st.kind === "missing" ? "missing" : st.relation, extras: 0, masked: 0, step: st };
       last = q;
     }
     return { cells, before };
@@ -396,7 +407,8 @@ button.dl:hover { border-color: var(--brand); }
       h("h3", {}, TEXT.method),
       h("div", { class: "big" }, TEXT.shuffles(set.shuffles, set.block)),
       h("div", { class: "muted" }, TEXT.model[set.null] || set.null),
-      h("div", { class: "muted" }, `${TEXT.evalueIs} (${group(tel.hosts_with_symbols)})`))));
+      h("div", { class: "muted" }, `${TEXT.evalueIs} (${group(tel.hosts_with_symbols)})`),
+      set.mask ? h("div", { class: "muted" }, TEXT.maskOn(set.routine)) : null)));
 
   // ------------------------------------------------------------ verdict
   const sum = DATA.summary;
@@ -438,6 +450,7 @@ button.dl:hover { border-color: var(--brand); }
           : `${c.step.host} · ${TEXT.legend[c.kind]}`;
         cells.push(h("span", { class: `cell ${c.kind}`, title: `${TEXT.stepN(i + 1)} · ${sym.code} → ${what}` }));
         for (let k = 0; k < c.extras; k++) cells.push(h("span", { class: "extra", title: TEXT.legend.extra }));
+        if (c.masked) cells.push(h("span", { class: "extra masked", title: TEXT.maskedRun(c.masked) }));
       });
       const level = Math.max(0, -Math.log10(Math.max(hit.evalue, 1e-300)));
       const tr = tier(hit.evalue);
@@ -454,7 +467,8 @@ button.dl:hover { border-color: var(--brand); }
     });
     const legend = h("div", { class: "legend" },
       ["identical", "similar", "different", "missing", "outside"].map((k) => h("span", {}, h("span", { class: `cell ${k}` }), TEXT.legend[k])),
-      h("span", {}, h("span", { class: "extra" }), TEXT.legend.extra));
+      h("span", {}, h("span", { class: "extra" }), TEXT.legend.extra),
+      set.mask ? h("span", {}, h("span", { class: "extra masked" }), TEXT.legend.masked) : null);
     app.append(h("section", { class: "panel overview" },
       h("table", {},
         h("thead", {}, h("tr", {}, TEXT.cols.map((c, i) => h("th", { class: i === 0 || i >= 3 ? "num" : "" }, c)))),
@@ -486,7 +500,21 @@ button.dl:hover { border-color: var(--brand); }
   function alignmentGrid(hit) {
     const grid = h("div", { class: "aln-grid" },
       h("div", { class: "aln-label" }, TEXT.rowQuery), h("div", {}), h("div", { class: "aln-label" }, TEXT.rowHost));
-    for (const st of hit.alignment) {
+    let run = [];
+    hit.alignment.forEach((st, i) => {
+      if (st.kind === "masked") {
+        run.push(st);
+        const next = hit.alignment[i + 1];
+        if (!next || next.kind !== "masked") {
+          const list = run.map((m) => `${clock(m.time)} · ${m.host} · ${m.event}`).join("\n");
+          grid.append(
+            h("div", { class: "tile masked" }, "···"),
+            h("div", {}),
+            h("div", { class: "tile masked", title: `${TEXT.maskedRun(run.length)}\n${list}` }, `(${run.length})`));
+          run = [];
+        }
+        return;
+      }
       if (st.kind === "pair") {
         const qs = q.symbols[st.query_step - 1];
         grid.append(
@@ -504,7 +532,7 @@ button.dl:hover { border-color: var(--brand); }
           h("div", {}),
           h("div", { class: "tile gap", title: TEXT.notSeen }, "—"));
       }
-    }
+    });
     return h("div", { class: "aln" }, grid);
   }
 
@@ -577,7 +605,8 @@ button.dl:hover { border-color: var(--brand); }
   }
 
   function timeline(hit) {
-    const points = hit.alignment.filter((st) => st.time);
+    const points = hit.alignment.filter((st) => st.time && st.kind !== "masked");
+    const routine = hit.alignment.filter((st) => st.time && st.kind === "masked");
     if (points.length < 2) return h("p", { class: "muted" }, "—");
     const t0 = Date.parse(points[0].time);
     const t1 = Date.parse(points[points.length - 1].time);
@@ -586,6 +615,10 @@ button.dl:hover { border-color: var(--brand); }
     const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": TEXT.timeline });
     const base = 86;
     svg.append(s("line", { x1: ml, x2: W - mr, y1: base, y2: base, stroke: "var(--line)", "stroke-width": 2 }));
+    for (const st of routine) {
+      svg.append(s("circle", { cx: x(st.time), cy: base, r: 2, fill: "var(--faint)" },
+        s("title", {}, `${clock(st.time)} · ${st.host} · ${st.event} · ${TEXT.rel.masked}`)));
+    }
     points.forEach((st, i) => {
       const xx = x(st.time);
       const kind = st.kind === "extra" ? "extra" : st.relation;
@@ -612,11 +645,11 @@ button.dl:hover { border-color: var(--brand); }
           h("td", {}, h("span", { class: "badge missing" }, TEXT.rel.missing)),
           h("td", { class: "muted" }, TEXT.notSeen));
       }
-      const kind = st.kind === "extra" ? "extra" : st.relation;
-      const rel = kind === "extra" ? TEXT.rel.extra : kind === "identical" ? TEXT.rel.identical : `${TEXT.rel[kind]} ${st.query}`;
-      return h("tr", {},
+      const kind = st.kind === "extra" || st.kind === "masked" ? st.kind : st.relation;
+      const rel = kind === "extra" || kind === "masked" ? TEXT.rel[kind] : kind === "identical" ? TEXT.rel.identical : `${TEXT.rel[kind]} ${st.query}`;
+      return h("tr", { class: kind === "masked" ? "masked" : null },
         h("td", { class: "t" }, clock(st.time)),
-        h("td", {}, st.kind === "extra" ? TEXT.extraStep : TEXT.stepN(st.query_step)),
+        h("td", {}, st.kind === "extra" ? TEXT.extraStep : st.kind === "masked" ? TEXT.maskedStep : TEXT.stepN(st.query_step)),
         h("td", { class: "mono", title: symbolTitle(st) }, st.host),
         h("td", { class: "mono muted" }, st.technique),
         h("td", {}, h("span", { class: `badge ${kind}` }, rel)),
@@ -649,7 +682,7 @@ button.dl:hover { border-color: var(--brand); }
   } }, TEXT.download);
   app.append(h("footer", {},
     h("span", {}, TEXT.generated(DATA.ttpblast)),
-    h("span", { class: "mono faint" }, `${TEXT.settings}: max-gap ${set.max_gap} s · gap -${set.gap_open}/-${set.gap_extend} · ${TEXT.model[set.null] ? set.null : ""} · seed ${set.seed}`),
+    h("span", { class: "mono faint" }, `${TEXT.settings}: max-gap ${set.max_gap} s · gap -${set.gap_open}/-${set.gap_extend}${set.mask ? ` · mask (routine ${set.routine})` : ""} · ${TEXT.model[set.null] ? set.null : ""} · seed ${set.seed}`),
     download));
 })();
 </script>

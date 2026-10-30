@@ -1,0 +1,11 @@
+# Ejecución remota con PsExec, vista desde la máquina de destino.
+# Genérica: el atacante ya tiene credenciales y salta con PsExec (o una
+# herramienta que hace lo mismo). En el destino aparece un servicio nuevo, el
+# servicio lanza un intérprete y empieza el reconocimiento. El origen de la
+# conexión se ve en otro host: esta consulta mira el que la recibe.
+
+SVC   # T1543.003  un servicio nuevo (PSEXESVC)
+PSX   # T1569.002  el servicio lanza un proceso
+CMD   # T1059.003  intérprete de comandos
+USR   # T1033      ¿quién soy? (whoami)
+SID   # T1082      información del sistema
