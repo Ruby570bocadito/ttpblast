@@ -16,8 +16,12 @@ por los que faltan, pero solo 1 por cada racha de pasos de más, sea cual sea
 su longitud. Los E-values siguen calibrados con cualquier coste, porque los
 barajados usan los mismos; lo que cambia es qué parecidos puntúan alto.
 
+Con --mask, cada coste se mide también con `ttpblast search --mask`, que se
+salta gratis la rutina de cada host (lo que no es de la consulta y las técnicas
+de la consulta que el host repite), sobre la misma telemetría.
+
 Uso: python experiments/evasion.py [--seeds 10] [--padding 0,1,2,3,4]
-     [--gaps 4/1,2/0,4/1:1/0] [--bin target/release/ttpblast]
+     [--gaps 4/1,2/0,4/1:1/0] [--mask] [--bin target/release/ttpblast]
 Solo usa la biblioteca estándar.
 """
 
@@ -40,13 +44,14 @@ def parse_gaps(spec):
     return pair(missing), pair(extra or missing)
 
 
-def search(binary, events, query, gaps):
+def search(binary, events, query, gaps, mask):
     (gap_open, gap_extend), (extra_open, extra_extend) = gaps
     out = subprocess.run(
         [binary, "search", "--query", f"queries/{query}.txt", "--events", events,
          "--evalue", "1e12", "--max-hits", "1000", "--no-baseline", "--json",
          "--gap-open", str(gap_open), "--gap-extend", str(gap_extend),
-         "--extra-open", str(extra_open), "--extra-extend", str(extra_extend)],
+         "--extra-open", str(extra_open), "--extra-extend", str(extra_extend),
+         *(["--mask"] if mask else [])],
         check=True, capture_output=True, text=True, encoding="utf-8",
     ).stdout
     return {hit["host"]: hit["evalue"] for hit in json.loads(out)["hits"]}
@@ -57,12 +62,15 @@ def main():
     parser.add_argument("--seeds", type=int, default=10)
     parser.add_argument("--padding", default="0,1,2,3,4")
     parser.add_argument("--gaps", default="4/1,2/0,4/1:2/0,4/1:1/0",
-                        help="costes a probar, faltan/de-más (los de ttpblast: 4/1:1/0)")
+                        help="costes a probar, faltan/de-más (los de ttpblast: 4/1)")
+    parser.add_argument("--mask", action="store_true",
+                        help="medir cada coste también con --mask")
     parser.add_argument("--bin", default=BIN)
     parser.add_argument("--work", default="data/evasion")
     args = parser.parse_args()
     paddings = [int(p) for p in args.padding.split(",")]
-    specs = args.gaps.split(",")
+    specs = [(spec, mask) for spec in args.gaps.split(",")
+             for mask in ((False, True) if args.mask else (False,))]
 
     results = {}
     for padding in paddings:
@@ -72,11 +80,13 @@ def main():
                             "--padding", str(padding)], check=True, capture_output=True)
             truth = json.loads((out_dir / "truth.json").read_text(encoding="utf-8"))
             attacked = {t["host"] for t in truth}
-            for spec in specs:
-                r = results.setdefault((padding, spec), {"found": 0, "chains": 0, "evalues": {},
-                                                         "fp": 0, "benign": 0})
+            for spec, mask in specs:
+                r = results.setdefault((padding, spec, mask), {"found": 0, "chains": 0,
+                                                               "evalues": {}, "fp": 0,
+                                                               "benign": 0})
                 for query in QUERIES:
-                    evalues = search(args.bin, str(out_dir / "events.ndjson"), query, parse_gaps(spec))
+                    evalues = search(args.bin, str(out_dir / "events.ndjson"), query,
+                                     parse_gaps(spec), mask)
                     for t in truth:
                         if t["consulta"] != query:
                             continue
@@ -93,13 +103,13 @@ def main():
     print(f"{args.seeds} semillas por fila · consultas: {', '.join(QUERIES)}")
     print("Por fila: cadenas con E <= 0,01 / total · E mediano de cada escenario · "
           "benignos con E <= 1 por cada 40 búsquedas (calibrado: ~1)\n")
-    for spec in specs:
+    for spec, mask in specs:
         (go, ge), (eo, ee) = parse_gaps(spec)
-        print(f"Faltan -{go}/-{ge} · de más -{eo}/-{ee}")
+        print(f"Faltan -{go}/-{ge} · de más -{eo}/-{ee}{' · con --mask' if mask else ''}")
         print(f"  {'relleno':>7}  {'detectadas':>10}  " + "  ".join(f"{s:>12}" for s in scenarios)
               + "  falsas/40")
         for padding in paddings:
-            r = results[(padding, spec)]
+            r = results[(padding, spec, mask)]
             medians = "  ".join(f"{statistics.median(r['evalues'][s]):>12.1e}" for s in scenarios)
             fp = 40 * r["fp"] / max(r["benign"], 1)
             print(f"  {padding:>7}  {r['found']:>4}/{r['chains']:<5}  {medians}  {fp:>8.2f}")
