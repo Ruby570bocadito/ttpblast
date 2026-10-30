@@ -48,6 +48,9 @@ jobs:
           hostname
           systeminfo | Out-Null
           schtasks /query /fo LIST | Out-Null
+          net user | Out-Null
+          ipconfig | Out-Null
+          tasklist | Out-Null
           Invoke-WebRequest https://example.com -UseBasicParsing | Out-Null
           Start-Sleep -Seconds 15
           # Only the build decides whether this step failed.
@@ -58,17 +61,23 @@ jobs:
           powershell -ExecutionPolicy Bypass -File .\scripts\export-sysmon.ps1 -Days 1
           if ($LASTEXITCODE -ne 0) { exit 1 }
           .\target\release\ttpblast.exe encode --events data\sysmon\events.ndjson --unmatched 20 | Tee-Object -FilePath data\sysmon\encode.txt
-          .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --details 1
+          .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --details 1 --html data\sysmon\informe.html
           .\target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\sysmon\events.ndjson --json | Out-File -Encoding utf8 data\sysmon\result.json
 
       - name: Comprobar que los comandos del laboratorio se codifican
         run: |
           $sequence = (Get-Content data\sysmon\encode.txt)[0]
-          foreach ($symbol in 'ACD', 'SID', 'TSK', 'PSH') {
+          # whoami (USR), hostname y systeminfo (SID), schtasks (TSK), PowerShell (PSH).
+          foreach ($symbol in 'USR', 'SID', 'TSK', 'PSH') {
             if ($sequence -notmatch "\b$symbol\b") {
               Write-Host "Falta $symbol en la secuencia: $sequence"
               exit 1
             }
+          }
+          # Símbolos añadidos en la v0.2, de net, ipconfig y tasklist: se informa, sin fallar.
+          foreach ($symbol in 'ACD', 'NCD', 'PRC') {
+            $seen = if ($sequence -match "\b$symbol\b") { 'sí' } else { 'no' }
+            Write-Host "$symbol aparece: $seen"
           }
           Write-Host "OK: $sequence"
 

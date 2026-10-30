@@ -1,7 +1,7 @@
 @echo off
-rem Demo completa en Windows (cmd o PowerShell): compila, genera telemetria
-rem sintetica y busca la cadena de ejemplo. Los argumentos extra van a
-rem "ttpblast search" (p. ej. demo --null gumbel).
+rem Demo guiada en Windows (cmd o PowerShell): compila y ejecuta "ttpblast demo",
+rem que genera telemetria sintetica, busca dos cadenas de ataque y se pone nota
+rem frente a la verdad. Los argumentos extra van a la demo (p. ej. demo --lang en).
 setlocal
 set "rc=0"
 pushd "%~dp0"
@@ -16,11 +16,7 @@ if errorlevel 1 (
 cargo build --release --quiet
 if errorlevel 1 ( set "rc=1" & goto :end )
 
-target\release\ttpblast.exe synth --out data\demo
-if errorlevel 1 ( set "rc=1" & goto :end )
-
-echo.
-target\release\ttpblast.exe search --query queries\phishing-lateral.txt --events data\demo\events.ndjson %*
+target\release\ttpblast.exe demo %*
 if errorlevel 1 set "rc=1"
 
 :end
