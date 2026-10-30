@@ -14,24 +14,27 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
-      - name: Demo guiada de principio a fin
+      - name: Demo guiada y biblioteca de consultas de principio a fin
         shell: bash
         run: |
           cargo run --release -- demo --details 1
           cargo run --release -- search --query queries/ransomware-preludio.txt --events data/demo/events.ndjson --details 0 --lang en
+          cargo run --release -- hunt --events data/demo/events.ndjson --html data/demo/hunt
       - name: Informes HTML de la demo
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: informes-demo
-          path: data/demo/*.html
+          path: |
+            data/demo/*.html
+            data/demo/hunt/*.html
           retention-days: 14
       - name: demo.cmd (cmd.exe)
         if: runner.os == 'Windows'

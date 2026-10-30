@@ -1,8 +1,9 @@
 name: Release
 
-# Al subir una etiqueta de versión (git tag v0.1.0 && git push origin v0.1.0),
+# Al subir una etiqueta de versión (git tag -a v0.3.0 && git push origin v0.3.0),
 # compila ttpblast para Windows, Linux y macOS y publica los binarios en una
-# release de GitHub, para usarlo sin instalar Rust.
+# release de GitHub, para usarlo sin instalar Rust. Las notas son la sección de
+# esa versión en CHANGELOG.md.
 on:
   push:
     tags: ['v*']
@@ -23,7 +24,7 @@ jobs:
           - { os: macos-latest, target: x86_64-apple-darwin, archive: tar.gz }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -42,6 +43,17 @@ jobs:
             cp "target/${{ matrix.target }}/release/ttpblast" "$name"/
             tar czf "$name.tar.gz" "$name"
           fi
-      - uses: softprops/action-gh-release@v2
+      - name: Notas de la versión (su sección del CHANGELOG)
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" 'index($0, "## [" v "]") == 1 { found = 1; next } found && /^## \[/ { exit } found' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md no tiene una sección para $version" >&2
+            exit 1
+          fi
+          printf '\n**Binarios**: descomprime el de tu sistema y prueba `ttpblast demo` (no hace falta nada más). Cambios completos en [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md).\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" >> notes.md
+      - uses: softprops/action-gh-release@v3
         with:
+          body_path: notes.md
           files: ttpblast-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive }}
