@@ -57,6 +57,8 @@ pub struct Options {
     pub threads: usize,
     pub json: bool,
     pub html: Option<String>,
+    /// Print nothing (the HTML report is still written): for `hunt`.
+    pub quiet: bool,
 }
 
 impl Options {
@@ -83,6 +85,7 @@ impl Options {
             threads: 0,
             json: false,
             html: None,
+            quiet: false,
         }
     }
 }
@@ -194,6 +197,12 @@ struct Search<'a> {
 }
 
 pub fn run(opts: &Options) -> Result<Summary, String> {
+    run_on(opts, &events::load(&opts.events)?)
+}
+
+/// The search on telemetry already loaded: `hunt` reads it once for every
+/// query in the library.
+pub fn run_on(opts: &Options, loaded: &Loaded) -> Result<Summary, String> {
     let started = Instant::now();
     if opts.gap_open < 1 || opts.gap_extend < 0 || opts.gap_extend > opts.gap_open {
         return Err(tr!(
@@ -209,8 +218,9 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
     }
     let alphabet = load_alphabet(opts.alphabet.as_deref())?;
     let query = parse_query(&opts.query_text, &alphabet)?;
-    let Loaded { events, skipped } = events::load_ndjson(&opts.events)?;
-    let seqs = sequence::build(&events, &alphabet);
+    let Loaded { events, skipped } = loaded;
+    let skipped = *skipped;
+    let seqs = sequence::build(events, &alphabet);
     if seqs.is_empty() {
         return Err(tr!(
             "ningún evento de {} encaja con el alfabeto (`ttpblast encode --events {} --unmatched 10` enseña qué hay)",
@@ -225,7 +235,7 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
         .with_extras(opts.extra_open, opts.extra_extend);
     let segments: Vec<Vec<Range<usize>>> = seqs
         .iter()
-        .map(|seq| sequence::segments(seq, &events, opts.max_gap))
+        .map(|seq| sequence::segments(seq, events, opts.max_gap))
         .collect();
 
     let threads = worker_count(opts.threads, seqs.len());
@@ -238,7 +248,7 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
     });
     let baseline = opts
         .baseline
-        .then(|| baseline_matches(&seqs, &query, &events, opts.maxspan));
+        .then(|| baseline_matches(&seqs, &query, events, opts.maxspan));
 
     let mut hosts: Vec<&str> = events.iter().map(|e| e.host.as_str()).collect();
     hosts.sort_unstable();
@@ -247,7 +257,7 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
         opts,
         alphabet: &alphabet,
         query: &query,
-        events: &events,
+        events,
         skipped,
         seqs: &seqs,
         segments: &segments,
@@ -261,7 +271,7 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
     if opts.json {
         let text = serde_json::to_string_pretty(&search.json()).map_err(|e| e.to_string())?;
         println!("{text}");
-    } else {
+    } else if !opts.quiet {
         search.print(started.elapsed(), threads);
     }
     if let Some(path) = &opts.html {
@@ -273,7 +283,7 @@ pub fn run(opts: &Options) -> Result<Summary, String> {
         // Keep stdout pure JSON when it is JSON.
         if opts.json {
             eprintln!("{note}");
-        } else {
+        } else if !opts.quiet {
             println!("{}", paint(note, Style::Quiet));
         }
     }
@@ -615,8 +625,8 @@ impl<'a> Search<'a> {
             i18n::plural(self.hosts, "host", "hosts"),
             if self.skipped > 0 {
                 tr!(
-                    " · {} líneas ignoradas",
-                    " · {} lines skipped",
+                    " · {} ignorados (ilegibles o sin host)",
+                    " · {} skipped (unreadable or without a host)",
                     i18n::count(self.skipped)
                 )
             } else {

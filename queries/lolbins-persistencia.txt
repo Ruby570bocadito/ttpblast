@@ -1,0 +1,10 @@
+# Descarga y persistencia con binarios del propio Windows ("living off the land").
+# Genérica: mshta o regsvr32 ejecutan algo remoto, se conectan fuera, dejan un
+# ejecutable en disco, lo encolan con BITS para que sobreviva a los reinicios y
+# lo dejan en la clave Run. Ningún fichero sospechoso hasta el tercer paso.
+
+PRX   # T1218      mshta o regsvr32 ejecutan contenido remoto
+C2W   # T1071.001  conexión web desde ese binario
+ITT   # T1105      un ejecutable nuevo en disco
+BIT   # T1197      un trabajo de BITS (bitsadmin)
+RUN   # T1547.001  persistencia en la clave Run

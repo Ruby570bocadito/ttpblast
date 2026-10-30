@@ -1,0 +1,11 @@
+# Copia de la base de datos de Active Directory y salida de la red.
+# Genérica, del estilo de las intrusiones que acaban en un controlador de
+# dominio: mirar cuentas, hacer una copia de sombra para leer NTDS.dit en
+# uso, copiarla con ntdsutil, comprimirla y subirla. Con ese fichero salen las
+# credenciales de todo el dominio.
+
+ACD   # T1087      cuentas y grupos (net group "domain admins")
+VSS   # T1490      copia de sombra (vssadmin create shadow)
+NTD   # T1003.003  ntdsutil copia NTDS.dit
+ARC   # T1560.001  comprimir la copia
+EXF   # T1567.002  subirla a la nube

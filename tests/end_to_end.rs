@@ -214,3 +214,27 @@ fn typos_get_a_suggestion() {
     let out = output(&["search", "--evalu", "3", "--lang", "es"]);
     assert!(String::from_utf8_lossy(&out.stderr).contains("--evalue"));
 }
+
+#[test]
+fn hunt_runs_the_whole_library_and_points_at_the_attacked_hosts() {
+    let text = run(&["hunt", "--events", demo_events(), "--lang", "es"]);
+    assert!(text.contains("8 consultas"), "{text}");
+    assert!(text.contains("3 hosts muy por encima del azar"), "{text}");
+    let doc: Value = serde_json::from_str(&run(&["hunt", "--events", demo_events(), "--json"]))
+        .expect("JSON de hunt");
+    let queries = doc["queries"].as_array().unwrap();
+    assert_eq!(queries.len(), 8);
+    let phishing = queries
+        .iter()
+        .find(|q| q["query"] == "phishing-lateral")
+        .unwrap();
+    assert_eq!(phishing["strong"].as_array().unwrap().len(), 3);
+    // Every host that several queries flag is one of the attacked ones.
+    let attacked = ["ws-legal-02", "ws-finance-04", "ws-sales-03", "ws-hr-02"];
+    let repeated = doc["repeated"].as_array().unwrap();
+    assert!(!repeated.is_empty());
+    for entry in repeated {
+        let host = entry["host"].as_str().unwrap();
+        assert!(attacked.contains(&host), "{host} no es un host atacado");
+    }
+}

@@ -18,7 +18,7 @@ pub struct Options {
 
 pub fn run(opts: &Options) -> Result<(), String> {
     let alphabet = crate::search::load_alphabet(opts.alphabet.as_deref())?;
-    let loaded = events::load_ndjson(&opts.events)?;
+    let loaded = events::load(&opts.events)?;
     let wanted = opts.host.as_deref().map(str::to_lowercase);
     let seqs = sequence::build(&loaded.events, &alphabet);
     // The first line is the first host's sequence: scripts (the Sysmon lab
@@ -51,12 +51,12 @@ pub fn run(opts: &Options) -> Result<(), String> {
         "\n{}",
         paint(
             tr!(
-                "{} eventos leídos · {} con símbolo, en {} · {} ignoradas (sin JSON válido o sin host)",
-                "{} events read · {} with a symbol, on {} · {} skipped (not valid JSON or no host)",
+                "{} eventos leídos · {} con símbolo, en {} · {} ignorados (ilegibles o sin host)",
+                "{} events read · {} with a symbol, on {} · {} skipped (unreadable or without a host)",
                 i18n::count(loaded.events.len()),
                 i18n::count(encoded),
                 i18n::plural(seqs.len(), "host", "hosts"),
-                i18n::plural(loaded.skipped, t("línea", "line"), t("líneas", "lines"))
+                i18n::count(loaded.skipped)
             ),
             Style::Quiet
         )
@@ -108,16 +108,24 @@ fn print_unmatched(events: &[Event], alphabet: &Alphabet, top: usize) {
     }
 }
 
-/// "process/start  powershell.exe ← explorer.exe", "file/creation  chrome.exe .pdf"...
+/// "process/start  powershell.exe ← explorer.exe", "file/creation  chrome.exe .pdf",
+/// or, for an event nothing translates, its source and ID: "microsoft-windows-kernel-power 41".
 fn event_kind(event: &Event) -> String {
     let what = match (event.get("event.category"), event.get("event.action")) {
         (Some(category), Some(action)) => format!("{category}/{action}"),
         _ if event.get("network.direction") == Some("inbound") => {
             t("network/entrante", "network/inbound").to_string()
         }
-        _ => match event.get("sysmon.event_id") {
-            Some(id) => tr!("sysmon evento {id}", "sysmon event {id}"),
-            None => t("sin categoría", "no category").to_string(),
+        _ => match (event.get("sysmon.event_id"), event.get("EventID")) {
+            (Some(id), _) => tr!("sysmon evento {id}", "sysmon event {id}"),
+            (None, Some(id)) => {
+                let source = event
+                    .get("SourceName")
+                    .or_else(|| event.get("Channel"))
+                    .unwrap_or("?");
+                return format!("{source} {id}");
+            }
+            (None, None) => t("sin categoría", "no category").to_string(),
         },
     };
     let process = event.get("process.name").unwrap_or("?");

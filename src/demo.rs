@@ -4,26 +4,10 @@
 //! truth. It needs nothing but the binary: the queries are built in.
 
 use crate::i18n::{self, t};
+use crate::library::{EXFILTRATION, PHISHING, Query};
 use crate::search::{self, Summary};
 use crate::synth::{self, Truth};
 use crate::ui::{self, Style, paint};
-
-pub const PHISHING: Query = Query {
-    stem: "phishing-lateral",
-    path: "queries/phishing-lateral.txt",
-    text: include_str!("../queries/phishing-lateral.txt"),
-};
-pub const EXFILTRATION: Query = Query {
-    stem: "exfiltracion",
-    path: "queries/exfiltracion.txt",
-    text: include_str!("../queries/exfiltracion.txt"),
-};
-
-pub struct Query {
-    pub stem: &'static str,
-    pub path: &'static str,
-    pub text: &'static str,
-}
 
 pub struct Options {
     pub synth: synth::Options,
@@ -194,8 +178,10 @@ pub fn run(opts: &Options) -> Result<(), String> {
         "{} {}",
         paint(t("Siguiente paso:", "Next step:"), Style::Bold),
         t(
-            "tu propia telemetría (README, «Con tu propia telemetría»).",
-            "your own telemetry (README, «With your own telemetry»)."
+            "tu propia telemetría, con `ttpblast hunt --events CARPETA` sobre tus .evtx o\n  \
+             NDJSON (README, «Con tu propia telemetría»).",
+            "your own telemetry, with `ttpblast hunt --events FOLDER` over your .evtx or\n  \
+             NDJSON (README, «With your own telemetry»)."
         )
     );
     Ok(())
