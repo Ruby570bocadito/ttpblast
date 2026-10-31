@@ -23,15 +23,15 @@ pub fn run(opts: &Options) -> Result<(), String> {
         paint("ttpblast demo", Style::Brand),
         paint(
             t(
-                "· BLAST para cadenas de ataque",
-                "· BLAST for attack chains"
+                "· Statistical threat hunting para telemetría de endpoint",
+                "· Statistical threat hunting for endpoint telemetry"
             ),
             Style::Quiet
         ),
         t(
-            "Escondo cuatro cadenas de ataque en dos semanas de telemetría inventada y las\n\
+            "Escondo cuatro cadenas de ataque en dos semanas de telemetría sintética y las\n\
              busco como lo haría un analista: con una consulta y sin saber dónde están.",
-            "I hide four attack chains in two weeks of made-up telemetry and look for them\n\
+            "I hide four attack chains in two weeks of synthetic telemetry and look for them\n\
              the way an analyst would: with a query, and without knowing where they are."
         )
     );
@@ -273,10 +273,14 @@ fn grade(chain: &Truth, summary: &Summary) -> bool {
 }
 
 fn section(n: usize, title: &str) {
-    let head = format!("━━ {n}/4 · {title} ");
-    let fill = 78usize.saturating_sub(head.chars().count());
+    // Teal names the section; the rule is only a border, so it stays dim (the
+    // guide maps separators to the border colour, not the brand).
+    let head = format!("{n}/4 · {title}");
+    let fill = 78usize.saturating_sub(head.chars().count() + 4);
     println!(
-        "\n{}\n",
-        paint(format!("{head}{}", "━".repeat(fill)), Style::Brand)
+        "\n{} {} {}\n",
+        paint("━━", Style::Quiet),
+        paint(head, Style::Brand),
+        paint("━".repeat(fill), Style::Quiet)
     );
 }

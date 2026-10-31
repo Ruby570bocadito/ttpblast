@@ -3,9 +3,9 @@
 </p>
 
 <p align="center">
-  <b>BLAST for endpoint telemetry.</b><br>
+  <b>Statistical threat hunting for endpoint telemetry.</b><br>
   It searches your machines' events for <b>variants</b> of a known attack chain<br>
-  and tells you, with an E-value, whether the resemblance is chance.
+  and, with an E-value inherited from BLAST, says whether the resemblance is chance or warrants a human review.
 </p>
 
 <p align="center">
@@ -16,10 +16,11 @@
 </p>
 
 **Status: research demo (v0.2).** It works end to end on synthetic telemetry, in English
-and Spanish, with an HTML report to share. The scoring matrix is a first version (not
-learned from data), calibration on real data is still to be shown, and we already know how
-to hide a chain from it: slip ordinary commands between its steps, which `--mask` counters
-on the synthetic data. Read [Limitations](#limitations) before trusting an E-value.
+and Spanish, and generates an HTML report to share. Where the limits are, no fine print:
+the scoring matrix is a first version, not learned from data; calibration on real data is
+still to be shown; and we already know how to hide a chain from it, by slipping ordinary
+commands between its steps, something `--mask` counters on the synthetic data. Read
+[Limitations](#limitations) before trusting an E-value.
 
 ## Try it in 30 seconds
 
@@ -27,9 +28,9 @@ on the synthetic data. Read [Limitations](#limitations) before trusting an E-val
 ttpblast demo
 ```
 
-The demo hides four attack chains in two weeks of made-up telemetry (40 hosts, 32,080
-events), looks for them the way an analyst would and grades itself against the truth. This
-is what it sees when searching for the chain of a malicious Office document:
+The demo hides four attack chains in two weeks of synthetic telemetry (40 hosts, 32,080
+events), looks for them the way an analyst would and scores itself against the known truth.
+This is what it sees when searching for the chain of a malicious Office document:
 
 <p align="center">
   <img src="docs/terminal.en.svg" width="820" alt="ttpblast search output: three hosts far beyond chance and the variant's alignment with its evidence">
@@ -38,8 +39,8 @@ is what it sees when searching for the chain of a malicious Office document:
 The exact search only finds the identical copy of the chain (ws-legal-02). `ttpblast` also
 finds the variant (ws-finance-04: cmd instead of PowerShell, a scheduled task instead of a
 Run key, WinRM instead of SMB, and two extra steps) and the chain that was cut short
-(ws-sales-03). All three stand well above everything else: the next host has E = 2.59,
-which is what chance gives.
+(ws-sales-03). All three stand well above the rest; the next host has E = 2.59, what chance
+gives, and there `ttpblast` stays quiet.
 
 ## The problem
 
@@ -50,11 +51,13 @@ There are two usual ways to look for an attack chain in telemetry, and neither i
 - **Loose query** (some of the steps, in any order). False alarms show up, and there is no
   way to tell whether "5 of 9 steps" on this host is unusual or just normal for it.
 
-Bioinformatics solved this same problem decades ago for DNA and proteins: **local
-alignment** tolerates substitutions and gaps, and **Karlin-Altschul statistics** say how
-many matches that good you would expect by chance (BLAST's E-value). `ttpblast` applies
-both ideas to endpoint telemetry: each host has its "genome" of ATT&CK techniques, and a
-query is a chain aligned against all of them.
+Bioinformatics solved this same problem decades ago for DNA and proteins: **local alignment**
+(Smith-Waterman) tolerates substitutions and gaps, and **Karlin-Altschul statistics** say how
+many matches that good you would expect by chance (BLAST's E-value). `ttpblast` inherits both
+ideas and applies them to endpoint telemetry: each host has its "genome" of ATT&CK techniques
+and a query is aligned against all of them. The E-value is the piece missing above: it puts a
+number on whether a resemblance is unusual or normal for the host; with it, `ttpblast` flags
+the improbable and stays quiet on the rest.
 
 ## Quick start
 

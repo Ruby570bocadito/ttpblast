@@ -44,6 +44,7 @@ pub fn run(opts: &Options) -> Result<(), String> {
             .map_err(|e| tr!("no se puede crear {dir}: {e}", "cannot create {dir}: {e}"))?;
     }
     let loaded = events::load(&opts.events)?;
+    let progress = ui::Progress::start(true, queries.len(), ui::Kind::Queries);
     let mut results = Vec::new();
     for (stem, path, text) in &queries {
         let settings = search::Options {
@@ -61,7 +62,9 @@ pub fn run(opts: &Options) -> Result<(), String> {
         };
         let summary = search::run_on(&settings, &loaded).map_err(|e| format!("{path}: {e}"))?;
         results.push((stem.as_str(), path.as_str(), summary));
+        progress.tick(0);
     }
+    progress.finish();
 
     let mut hosts: Vec<&str> = loaded.events.iter().map(|e| e.host.as_str()).collect();
     hosts.sort_unstable();
@@ -193,7 +196,7 @@ pub fn run(opts: &Options) -> Result<(), String> {
                     "Hosts que señalan varias consultas (lo primero que miraría):",
                     "Hosts that several queries point at (where I would look first):"
                 ),
-                Style::Bold
+                Style::Brand
             )
         );
         for (host, stems) in &repeated {
