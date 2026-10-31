@@ -3,9 +3,9 @@
 </p>
 
 <p align="center">
-  <b>BLAST para la telemetría de endpoint.</b><br>
+  <b>Statistical threat hunting para telemetría de endpoint.</b><br>
   Busca <b>variantes</b> de una cadena de ataque conocida en los eventos de tus máquinas<br>
-  y te dice, con un E-value, si el parecido es casualidad.
+  y, con un E-value heredado de BLAST, dice si el parecido es azar o merece revisión humana.
 </p>
 
 <p align="center">
@@ -16,11 +16,11 @@
 </p>
 
 **Estado: demo de investigación (v0.2).** Funciona de principio a fin sobre telemetría
-sintética, en español y en inglés, con un informe HTML para compartir. La matriz de
-puntuación es inicial (no aprendida de datos), la calibración en datos reales está por
-demostrar y ya sabemos cómo esconderle una cadena: intercalar comandos corrientes entre sus
-pasos, algo que `--mask` contrarresta en los datos sintéticos. Lee
-[Limitaciones](#limitaciones) antes de fiarte de un E-value.
+sintética, en español e inglés, y genera un informe HTML para compartir. Dónde están los
+límites, sin letra pequeña: la matriz de puntuación es inicial, no aprendida de datos; la
+calibración sobre datos reales está por demostrar; y ya sabemos cómo ocultarle una cadena,
+intercalando comandos corrientes entre sus pasos, algo que `--mask` contrarresta sobre los
+datos sintéticos. Lee [Limitaciones](#limitaciones) antes de fiarte de un E-value.
 
 ## Pruébalo en 30 segundos
 
@@ -28,19 +28,19 @@ pasos, algo que `--mask` contrarresta en los datos sintéticos. Lee
 ttpblast demo
 ```
 
-La demo esconde cuatro cadenas de ataque en dos semanas de telemetría inventada (40 hosts,
-32.080 eventos), las busca como lo haría un analista y se pone nota frente a la verdad. Esto
-es lo que ve al buscar la cadena de un documento de Office malicioso:
+La demo esconde cuatro cadenas de ataque en dos semanas de telemetría sintética (40 hosts,
+32.080 eventos), las busca como lo haría un analista y se puntúa contra la verdad conocida.
+Esto es lo que ve al buscar la cadena de un documento de Office malicioso:
 
 <p align="center">
   <img src="docs/terminal.svg" width="820" alt="Salida de ttpblast search: tres hosts muy por encima del azar y el alineamiento de la variante con sus pruebas">
 </p>
 
 La búsqueda exacta solo encuentra la copia idéntica de la cadena (ws-legal-02). `ttpblast`
-encuentra también la variante (ws-finance-04: cmd en vez de PowerShell, tarea programada en
+encuentra además la variante (ws-finance-04: cmd en vez de PowerShell, tarea programada en
 vez de clave Run, WinRM en vez de SMB y dos pasos de más) y la cadena cortada a medias
-(ws-sales-03). Las tres quedan muy por encima de todo lo demás: el siguiente host tiene
-E = 2,59, que es lo esperable por azar.
+(ws-sales-03). Las tres destacan muy por encima del resto; el host siguiente tiene E = 2,59,
+lo esperable por azar, y ahí `ttpblast` se calla.
 
 ## El problema
 
@@ -54,10 +54,12 @@ es buena:
   hay forma de saber si "5 de 9 pasos" en este host es raro o es lo normal.
 
 La bioinformática resolvió ese mismo problema hace décadas para el ADN y las proteínas: el
-**alineamiento local** tolera sustituciones y huecos, y la **estadística de Karlin-Altschul**
-dice cuántos aciertos así esperarías por azar (el E-value de BLAST). `ttpblast` aplica las
-dos ideas a la telemetría de endpoint: cada host tiene su «genoma» de técnicas de ATT&CK, y
-una consulta es una cadena que se alinea contra todos.
+**alineamiento local** (Smith-Waterman) tolera sustituciones y huecos, y la **estadística de
+Karlin-Altschul** dice cuántos aciertos así esperarías por azar (el E-value de BLAST).
+`ttpblast` hereda las dos ideas y las aplica a la telemetría de endpoint: cada host tiene su
+«genoma» de técnicas ATT&CK y una consulta se alinea contra todos. El E-value es la pieza que
+faltaba arriba: pone número a si un parecido es raro o normal en el host; con él, `ttpblast`
+señala lo improbable y calla el resto.
 
 ## Inicio rápido
 

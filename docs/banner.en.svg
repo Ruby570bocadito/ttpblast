@@ -1,37 +1,52 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="ttpblast: an attack chain aligned with the variant the attacker ran, E = 1.8 × 10⁻⁴">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="ttl desc">
+<title id="ttl">ttpblast — Statistical threat hunting for endpoint telemetry</title>
+<desc id="desc">A queried attack chain is locally aligned with the one a host ran: 5 steps match and 4 are substitutions within the same tactic. The alignment score falls in the tail of what chance would produce; E = 1.8 × 10⁻⁴, unlikely by chance.</desc>
 <rect width="1200" height="360" rx="18" fill="#0d1117"/>
 <rect x="0.5" y="0.5" width="1199" height="359" rx="18" fill="none" stroke="#30363d"/>
-<text x="60" y="112" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="68" font-weight="700" fill="#e6edf3" letter-spacing="-1">ttp<tspan fill="#2dd4bf">blast</tspan></text>
-<text x="64" y="152" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="24" fill="#8b949e">BLAST for attack chains</text>
-<text x="1140" y="104" text-anchor="end" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="40" font-weight="700" fill="#ff7b72">E = 1.8 × 10⁻⁴</text>
-<text x="1140" y="138" text-anchor="end" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="18" fill="#8b949e">nearly impossible by chance</text>
-<rect x="60" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="91" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">UEX</text>
-<text x="91" y="262" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">|</text>
-<rect x="60" y="278" width="62" height="38" rx="8" fill="rgba(74,222,128,0.13)" stroke="rgba(74,222,128,0.5)"/><text x="91" y="303" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">UEX</text>
-<rect x="132" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="163" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">PSH</text>
-<text x="163" y="262" text-anchor="middle" fill="#fbbf24" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">+</text>
-<rect x="132" y="278" width="62" height="38" rx="8" fill="rgba(251,191,36,0.13)" stroke="rgba(251,191,36,0.5)"/><text x="163" y="303" text-anchor="middle" fill="#fbbf24" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">CMD</text>
-<rect x="204" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="235" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">C2W</text>
-<text x="235" y="262" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">|</text>
-<rect x="204" y="278" width="62" height="38" rx="8" fill="rgba(74,222,128,0.13)" stroke="rgba(74,222,128,0.5)"/><text x="235" y="303" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">C2W</text>
-<rect x="276" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="307" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">ITT</text>
-<text x="307" y="262" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">|</text>
-<rect x="276" y="278" width="62" height="38" rx="8" fill="rgba(74,222,128,0.13)" stroke="rgba(74,222,128,0.5)"/><text x="307" y="303" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">ITT</text>
-<rect x="348" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="379" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">RUN</text>
-<text x="379" y="262" text-anchor="middle" fill="#fbbf24" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">+</text>
-<rect x="348" y="278" width="62" height="38" rx="8" fill="rgba(251,191,36,0.13)" stroke="rgba(251,191,36,0.5)"/><text x="379" y="303" text-anchor="middle" fill="#fbbf24" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">TSK</text>
-<rect x="420" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="451" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">USR</text>
-<text x="451" y="262" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">|</text>
-<rect x="420" y="278" width="62" height="38" rx="8" fill="rgba(74,222,128,0.13)" stroke="rgba(74,222,128,0.5)"/><text x="451" y="303" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">USR</text>
-<rect x="492" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="523" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">SID</text>
-<text x="523" y="262" text-anchor="middle" fill="#fbbf24" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">+</text>
-<rect x="492" y="278" width="62" height="38" rx="8" fill="rgba(251,191,36,0.13)" stroke="rgba(251,191,36,0.5)"/><text x="523" y="303" text-anchor="middle" fill="#fbbf24" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">RSD</text>
-<rect x="564" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="595" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">LSA</text>
-<text x="595" y="262" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">|</text>
-<rect x="564" y="278" width="62" height="38" rx="8" fill="rgba(74,222,128,0.13)" stroke="rgba(74,222,128,0.5)"/><text x="595" y="303" text-anchor="middle" fill="#4ade80" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">LSA</text>
-<rect x="636" y="196" width="62" height="38" rx="8" fill="rgba(45,212,191,0.13)" stroke="rgba(45,212,191,0.5)"/><text x="667" y="221" text-anchor="middle" fill="#2dd4bf" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">SMB</text>
-<text x="667" y="262" text-anchor="middle" fill="#fbbf24" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="22" font-weight="700">+</text>
-<rect x="636" y="278" width="62" height="38" rx="8" fill="rgba(251,191,36,0.13)" stroke="rgba(251,191,36,0.5)"/><text x="667" y="303" text-anchor="middle" fill="#fbbf24" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="17" font-weight="600">WRM</text>
-<text x="722" y="221" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="19" fill="#8b949e">← what you look for</text>
-<text x="722" y="303" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="19" fill="#8b949e">← what the attacker did</text>
+
+<!-- brand -->
+<text x="56" y="104" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="60" font-weight="700" letter-spacing="-1" fill="#e6edf3">ttp<tspan fill="#2dd4bf">blast</tspan></text>
+<text x="58" y="136" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="20" fill="#8b949e">Statistical threat hunting for endpoint telemetry</text>
+<rect x="56" y="152" width="168" height="24" rx="12" fill="none" stroke="#30363d"/>
+<text x="68" y="169" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8b949e">research demo · v0.2</text>
+
+<!-- query / host alignment -->
+<rect x="56" y="200" width="660" height="124" rx="12" fill="none" stroke="#30363d"/>
+<text x="142" y="240" text-anchor="end" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-style="italic" font-size="14" fill="#8b949e">query</text>
+<text x="142" y="304" text-anchor="end" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-style="italic" font-size="14" fill="#8b949e">host</text>
+
+<g font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" text-anchor="middle">
+<!-- query row (teal) -->
+<g font-size="17" font-weight="600" fill="#2dd4bf">
+<text x="176" y="240">UEX</text><text x="235" y="240">PSH</text><text x="294" y="240">C2W</text><text x="353" y="240">ITT</text><text x="412" y="240">RUN</text><text x="471" y="240">USR</text><text x="530" y="240">SID</text><text x="589" y="240">LSA</text><text x="648" y="240">SMB</text>
+</g>
+<!-- connectors: | matches (green), + substitutes (amber) -->
+<g font-size="19" font-weight="700">
+<text x="176" y="273" fill="#4ade80">|</text><text x="235" y="273" fill="#fbbf24">+</text><text x="294" y="273" fill="#4ade80">|</text><text x="353" y="273" fill="#4ade80">|</text><text x="412" y="273" fill="#fbbf24">+</text><text x="471" y="273" fill="#4ade80">|</text><text x="530" y="273" fill="#fbbf24">+</text><text x="589" y="273" fill="#4ade80">|</text><text x="648" y="273" fill="#fbbf24">+</text>
+</g>
+<!-- host row: green if it matches, amber if it substitutes -->
+<g font-size="17" font-weight="600">
+<text x="176" y="304" fill="#4ade80">UEX</text><text x="235" y="304" fill="#fbbf24">CMD</text><text x="294" y="304" fill="#4ade80">C2W</text><text x="353" y="304" fill="#4ade80">ITT</text><text x="412" y="304" fill="#fbbf24">TSK</text><text x="471" y="304" fill="#4ade80">USR</text><text x="530" y="304" fill="#fbbf24">RSD</text><text x="589" y="304" fill="#4ade80">LSA</text><text x="648" y="304" fill="#fbbf24">WRM</text>
+</g>
+</g>
+<text x="56" y="346" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="14" fill="#8b949e">local alignment: the searched chain against the one a host ran</text>
+
+<!-- column divider -->
+<line x1="734" y1="72" x2="734" y2="316" stroke="#30363d"/>
+
+<!-- statistical conclusion -->
+<text x="1144" y="72" text-anchor="end" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="13" letter-spacing="2.5" fill="#8b949e">STATISTICAL CONCLUSION</text>
+<text x="1144" y="116" text-anchor="end" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="40" font-weight="700" fill="#ff7b72">E = 1.8 × 10⁻⁴</text>
+<text x="1144" y="142" text-anchor="end" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="16" fill="#8b949e">unlikely by chance</text>
+
+<!-- null distribution: signal over noise -->
+<line x1="752" y1="300" x2="1138" y2="300" stroke="#30363d"/>
+<path d="M 760 300 C 795 300 820 228 842 224 C 866 220 888 252 912 272 C 952 298 1030 300 1130 300" fill="rgba(139,148,158,0.14)" stroke="#8b949e" stroke-opacity="0.5" stroke-width="1.5"/>
+<text x="842" y="212" text-anchor="middle" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="14" fill="#8b949e">expected by chance</text>
+<line x1="985" y1="300" x2="985" y2="222" stroke="#8b949e" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="4 4"/>
+<text x="985" y="214" text-anchor="middle" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="13" fill="#8b949e">E = 0.01 threshold</text>
+<line x1="1095" y1="300" x2="1095" y2="214" stroke="#ff7b72" stroke-width="2"/>
+<circle cx="1095" cy="214" r="3.5" fill="#ff7b72"/>
+<text x="1095" y="202" text-anchor="middle" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="13" fill="#ff7b72">observed</text>
+<text x="752" y="318" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="14" fill="#8b949e">alignment score →</text>
 </svg>
