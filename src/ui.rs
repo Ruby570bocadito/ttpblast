@@ -5,12 +5,16 @@
 //! "similar", red is "far from chance".
 
 use std::fmt::Display;
-use std::io::IsTerminal;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::io::{IsTerminal, Write};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use crate::i18n;
 
 static COLOR: AtomicBool = AtomicBool::new(false);
+static PROGRESS: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorChoice {
@@ -34,23 +38,35 @@ impl ColorChoice {
 }
 
 pub fn init(choice: ColorChoice) {
+    let allow_color = std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty());
     let on = match choice {
         ColorChoice::Always => {
             enable_vt();
             true
         }
         ColorChoice::Never => false,
-        ColorChoice::Auto => {
-            std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
-                && std::io::stdout().is_terminal()
-                && enable_vt()
-        }
+        ColorChoice::Auto => allow_color && std::io::stdout().is_terminal() && enable_vt(),
     };
     COLOR.store(on, Ordering::Relaxed);
+
+    // Progress and animation go to stderr, and only when stderr is a terminal,
+    // so stdout, pipes, files and CI stay clean. NO_COLOR and `--color never`
+    // silence them, like the colours.
+    let animate = choice != ColorChoice::Never
+        && (choice == ColorChoice::Always || allow_color)
+        && std::io::stderr().is_terminal()
+        && enable_vt_stderr();
+    PROGRESS.store(animate, Ordering::Relaxed);
 }
 
 pub fn color() -> bool {
     COLOR.load(Ordering::Relaxed)
+}
+
+/// Whether to animate progress on stderr: stderr is a terminal and colours
+/// are allowed, so stdout, pipes, files and CI stay clean.
+pub fn progress() -> bool {
+    PROGRESS.load(Ordering::Relaxed)
 }
 
 /// Windows consoles only interpret ANSI escapes once asked to.
@@ -83,6 +99,41 @@ fn enable_vt() -> bool {
 
 #[cfg(not(windows))]
 fn enable_vt() -> bool {
+    true
+}
+
+/// The same as `enable_vt`, but for stderr, where the progress line is drawn.
+/// stderr has its own console mode on Windows, so it must be enabled too, or
+/// the escape codes would print literally.
+#[cfg(windows)]
+fn enable_vt_stderr() -> bool {
+    type Handle = *mut core::ffi::c_void;
+    const STD_ERROR_HANDLE: u32 = -12i32 as u32;
+    const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetStdHandle(which: u32) -> Handle;
+        fn GetConsoleMode(handle: Handle, mode: *mut u32) -> i32;
+        fn SetConsoleMode(handle: Handle, mode: u32) -> i32;
+    }
+    // SAFETY: plain Win32 calls on this process's own stderr handle; `mode`
+    // outlives the call that writes it.
+    unsafe {
+        let handle = GetStdHandle(STD_ERROR_HANDLE);
+        if handle.is_null() || handle as isize == -1 {
+            return false;
+        }
+        let mut mode = 0;
+        if GetConsoleMode(handle, &mut mode) == 0 {
+            return false;
+        }
+        mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0
+            || SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0
+    }
+}
+
+#[cfg(not(windows))]
+fn enable_vt_stderr() -> bool {
     true
 }
 
@@ -250,6 +301,131 @@ pub fn suggest<'a>(typed: &str, candidates: &[&'a str]) -> Option<&'a str> {
         .filter(|&(d, c)| d <= c.chars().count().div_ceil(2))
         .min()
         .map(|(_, c)| c)
+}
+
+/// What a progress line counts, so it can label itself (both languages kept
+/// side by side here, like the rest of the UI).
+#[derive(Clone, Copy)]
+pub enum Kind {
+    /// Hosts aligned, with the shuffles counted beside them: `search`, `demo`.
+    Hosts,
+    /// Queries run against the telemetry: `hunt`.
+    Queries,
+}
+
+/// Shared between the workers (which bump the counters) and the single monitor
+/// thread (which redraws the line). Only atomics cross the thread boundary.
+struct Shared {
+    kind: Kind,
+    total: usize,
+    done: AtomicUsize,
+    shuffles: AtomicUsize,
+    running: AtomicBool,
+}
+
+/// A live, one-line progress indicator on stderr: a Braille spinner and
+/// running counts that show the work advancing. It draws only when
+/// `progress()` is on (stderr is a terminal, colours allowed), so stdout,
+/// pipes, files and CI never see it. All drawing happens on one monitor
+/// thread, so it never interleaves with stdout or with itself; `finish`
+/// (and `Drop`, as a backstop) clears the line before the real output begins.
+/// When off, every method is a cheap no-op.
+pub struct Progress {
+    shared: Arc<Shared>,
+    monitor: Mutex<Option<JoinHandle<()>>>,
+    on: bool,
+}
+
+impl Progress {
+    /// Starts a progress line counting `total` units of `kind`, if `enabled`
+    /// and stderr allows it.
+    pub fn start(enabled: bool, total: usize, kind: Kind) -> Progress {
+        let on = enabled && progress();
+        let shared = Arc::new(Shared {
+            kind,
+            total,
+            done: AtomicUsize::new(0),
+            shuffles: AtomicUsize::new(0),
+            running: AtomicBool::new(on),
+        });
+        let monitor = if on {
+            let shared = Arc::clone(&shared);
+            Some(std::thread::spawn(move || run_monitor(shared)))
+        } else {
+            None
+        };
+        Progress {
+            shared,
+            monitor: Mutex::new(monitor),
+            on,
+        }
+    }
+
+    /// One more unit done, having run `shuffles` shuffles (0 when it counts
+    /// something else). Lock-free; any worker thread may call it.
+    pub fn tick(&self, shuffles: usize) {
+        if !self.on {
+            return;
+        }
+        self.shared.done.fetch_add(1, Ordering::Relaxed);
+        self.shared.shuffles.fetch_add(shuffles, Ordering::Relaxed);
+    }
+
+    /// Stops the monitor and clears the line, so the real output starts on a
+    /// clean row. Idempotent: only the first call (here or in `Drop`) acts.
+    pub fn finish(&self) {
+        if !self.on {
+            return;
+        }
+        if let Ok(mut monitor) = self.monitor.lock()
+            && let Some(handle) = monitor.take()
+        {
+            self.shared.running.store(false, Ordering::Relaxed);
+            let _ = handle.join();
+            let mut err = std::io::stderr();
+            let _ = err.write_all(b"\r\x1b[2K");
+            let _ = err.flush();
+        }
+    }
+}
+
+impl Drop for Progress {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
+/// The monitor thread: redraw the line a few times a second until stopped.
+/// It is the only writer to stderr while the work runs, so nothing interleaves.
+fn run_monitor(shared: Arc<Shared>) {
+    const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let (brand, quiet) = (Style::Brand.code(), Style::Quiet.code());
+    let mut err = std::io::stderr();
+    let mut frame = 0usize;
+    while shared.running.load(Ordering::Relaxed) {
+        let spin = FRAMES[frame % FRAMES.len()];
+        let done = shared.done.load(Ordering::Relaxed);
+        let counts = match shared.kind {
+            Kind::Hosts => tr!(
+                "{}/{} hosts · {} barajados",
+                "{}/{} hosts · {} shuffles",
+                i18n::count(done),
+                i18n::count(shared.total),
+                i18n::count(shared.shuffles.load(Ordering::Relaxed))
+            ),
+            Kind::Queries => tr!(
+                "{}/{} consultas",
+                "{}/{} queries",
+                i18n::count(done),
+                i18n::count(shared.total)
+            ),
+        };
+        let line = format!("\r\x1b[{brand}m{spin}\x1b[0m \x1b[{quiet}m{counts}\x1b[0m\x1b[K");
+        let _ = err.write_all(line.as_bytes());
+        let _ = err.flush();
+        frame = frame.wrapping_add(1);
+        std::thread::sleep(Duration::from_millis(90));
+    }
 }
 
 #[cfg(test)]

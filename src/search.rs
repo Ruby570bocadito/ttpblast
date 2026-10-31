@@ -358,6 +358,7 @@ fn evaluate_all<'a>(
     opts: &Options,
     threads: usize,
 ) -> Vec<Hit<'a>> {
+    let progress = ui::Progress::start(!opts.quiet, seqs.len(), ui::Kind::Hosts);
     let next = AtomicUsize::new(0);
     let work = || {
         let mut done = Vec::new();
@@ -369,7 +370,9 @@ fn evaluate_all<'a>(
                 segments: &segments[i],
                 masked: &masks[i],
             };
-            done.push((i, evaluate(&host, query, scoring, opts, seqs.len())));
+            let hit = evaluate(&host, query, scoring, opts, seqs.len());
+            progress.tick(hit.null_scores.len());
+            done.push((i, hit));
         }
         done
     };
@@ -384,6 +387,7 @@ fn evaluate_all<'a>(
             slots[i] = Some(hit);
         }
     });
+    progress.finish();
     slots
         .into_iter()
         .map(|hit| hit.expect("cada host se evalúa una vez"))
@@ -875,7 +879,7 @@ impl<'a> Search<'a> {
                     "Hits with E ≤ {}",
                     i18n::evalue(self.opts.max_evalue)
                 ),
-                Style::Bold
+                Style::Brand
             )
         );
         if shown.is_empty() {
@@ -907,6 +911,10 @@ impl<'a> Search<'a> {
                 Style::Quiet
             )
         );
+        // A midrule under the column heads, as a statistical table has. Width
+        // matches the header format above (2-space indent + 66 + the host
+        // column); dim, because the guide maps separators to the border colour.
+        println!("  {}", paint("─".repeat(66 + width), Style::Quiet));
         for (i, hit) in shown.iter().enumerate() {
             let Some(aln) = &hit.alignment else { continue };
             let (identical, similar, gaps) = counts(aln, self.query, hit.seq);
@@ -1176,7 +1184,7 @@ impl<'a> Search<'a> {
 
     fn print_verdict(&self, elapsed: Duration, threads: usize) {
         let v = self.verdict();
-        println!("{}", paint(t("Veredicto", "Verdict"), Style::Bold));
+        println!("{}", paint(t("Veredicto", "Verdict"), Style::Brand));
         let names = |hits: &[&Hit]| {
             let names: Vec<&str> = hits.iter().take(6).map(|h| h.seq.host.as_str()).collect();
             let more = hits.len() - names.len();

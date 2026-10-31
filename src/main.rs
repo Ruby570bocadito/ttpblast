@@ -377,7 +377,7 @@ impl Flags {
 // ------------------------------------------------------------------- help
 
 fn heading(text: &str) -> String {
-    paint(text, Style::Bold)
+    paint(text, Style::Brand)
 }
 
 fn help() -> String {
@@ -387,7 +387,7 @@ fn help() -> String {
     if i18n::english() {
         format!(
             "\n{logo}
-{name} {version} · BLAST for attack chains
+{name} {version} · Statistical threat hunting for endpoint telemetry
 Searches your machines' telemetry for variants of a known attack chain and
 tells you, with an E-value, whether the resemblance is chance.
 
@@ -427,7 +427,7 @@ More at https://github.com/Ruby570bocadito/ttpblast
     } else {
         format!(
             "\n{logo}
-{name} {version} · BLAST para cadenas de ataque
+{name} {version} · Statistical threat hunting para telemetría de endpoint
 Busca variantes de una cadena de ataque conocida en la telemetría de tus
 equipos y te dice, con un E-value, si el parecido es casualidad.
 
