@@ -3,9 +3,9 @@
 </p>
 
 <p align="center">
-  <b>Statistical threat hunting para telemetría de endpoint.</b><br>
-  Busca <b>variantes</b> de una cadena de ataque conocida en los eventos de tus máquinas<br>
-  y, con un E-value heredado de BLAST, dice si el parecido es azar o merece revisión humana.
+  <b>Encuentra la variante escondida en el ruido.</b><br>
+  Dale una cadena de ataque conocida y ttpblast busca sus <b>variantes</b> en la telemetría de tus máquinas;<br>
+  con un E-value heredado de BLAST, dice si el parecido es azar o merece una mirada.
 </p>
 
 <p align="center">
@@ -13,6 +13,10 @@
   <img src="https://img.shields.io/badge/licencia-MIT%20%2F%20Apache--2.0-blue" alt="Licencia MIT o Apache-2.0">
   <img src="https://img.shields.io/badge/Rust-2024-orange" alt="Rust 2024">
   · <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
+  <img src="docs/demo.gif" width="820" alt="ttpblast demo en marcha: el contador de barajados sube mientras se separa la señal del ruido, y luego emergen la tabla de resultados y el alineamiento de la variante; tres hosts quedan muy por encima del azar">
 </p>
 
 **Estado: demo de investigación (v0.2).** Funciona de principio a fin sobre telemetría

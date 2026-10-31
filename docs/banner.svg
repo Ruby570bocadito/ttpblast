@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="ttl desc">
-<title id="ttl">ttpblast — Statistical threat hunting para telemetría de endpoint</title>
+<title id="ttl">ttpblast — Encuentra la variante escondida en el ruido</title>
 <desc id="desc">Una cadena de ataque consultada se alinea localmente con la que ejecutó un host: 5 pasos coinciden y 4 son sustituciones de la misma táctica. La puntuación del alineamiento cae en la cola de lo esperable por azar; E = 1,8 × 10⁻⁴, improbable por azar.</desc>
 <rect width="1200" height="360" rx="18" fill="#0d1117"/>
 <rect x="0.5" y="0.5" width="1199" height="359" rx="18" fill="none" stroke="#30363d"/>
 
 <!-- marca -->
 <text x="56" y="104" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="60" font-weight="700" letter-spacing="-1" fill="#e6edf3">ttp<tspan fill="#2dd4bf">blast</tspan></text>
-<text x="58" y="136" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="20" fill="#8b949e">Statistical threat hunting para telemetría de endpoint</text>
+<text x="58" y="136" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="20" fill="#8b949e">Encuentra la variante escondida en el ruido</text>
 <rect x="56" y="152" width="226" height="24" rx="12" fill="none" stroke="#30363d"/>
 <text x="68" y="169" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8b949e">demo de investigación · v0.2</text>
 

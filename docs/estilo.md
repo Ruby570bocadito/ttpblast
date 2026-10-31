@@ -11,11 +11,12 @@ de la CLI, informes HTML, commits y documentación. Si dudas al redactar algo, v
 
 ## 1. En una frase
 
-**Statistical threat hunting para telemetría de endpoint.**
+**Encuentra la variante escondida en el ruido.**
+(categoría, para posicionamiento: *statistical threat hunting* para telemetría de endpoint.)
 
 Buscamos variantes de una cadena de ataque conocida y, con un *E-value*, decimos si el
-parecido es casualidad. Lo que nos distingue de un SIEM no es detectar más, sino **saber
-cuándo callarnos**.
+parecido es azar o merece una mirada. Lo que nos distingue de un SIEM no es detectar más,
+sino **saber cuándo callar**.
 
 ## 2. Historia de origen (el linaje, no el disfraz)
 

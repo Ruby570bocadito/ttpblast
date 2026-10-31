@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="ttl desc">
-<title id="ttl">ttpblast — Statistical threat hunting for endpoint telemetry</title>
+<title id="ttl">ttpblast — Find the variant hiding in the noise</title>
 <desc id="desc">A queried attack chain is locally aligned with the one a host ran: 5 steps match and 4 are substitutions within the same tactic. The alignment score falls in the tail of what chance would produce; E = 1.8 × 10⁻⁴, unlikely by chance.</desc>
 <rect width="1200" height="360" rx="18" fill="#0d1117"/>
 <rect x="0.5" y="0.5" width="1199" height="359" rx="18" fill="none" stroke="#30363d"/>
 
 <!-- brand -->
 <text x="56" y="104" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="60" font-weight="700" letter-spacing="-1" fill="#e6edf3">ttp<tspan fill="#2dd4bf">blast</tspan></text>
-<text x="58" y="136" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="20" fill="#8b949e">Statistical threat hunting for endpoint telemetry</text>
+<text x="58" y="136" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" font-size="20" fill="#8b949e">Find the variant hiding in the noise</text>
 <rect x="56" y="152" width="168" height="24" rx="12" fill="none" stroke="#30363d"/>
 <text x="68" y="169" font-family="'Cascadia Mono','SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="12" fill="#8b949e">research demo · v0.2</text>
 

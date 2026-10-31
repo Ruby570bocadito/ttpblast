@@ -3,9 +3,9 @@
 </p>
 
 <p align="center">
-  <b>Statistical threat hunting for endpoint telemetry.</b><br>
-  It searches your machines' events for <b>variants</b> of a known attack chain<br>
-  and, with an E-value inherited from BLAST, says whether the resemblance is chance or warrants a human review.
+  <b>Find the variant hiding in the noise.</b><br>
+  Give it one known attack chain and ttpblast searches your machines' telemetry for its <b>variants</b>;<br>
+  with an E-value inherited from BLAST, it says whether the resemblance is chance or warrants a look.
 </p>
 
 <p align="center">
@@ -13,6 +13,10 @@
   <img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License MIT or Apache-2.0">
   <img src="https://img.shields.io/badge/Rust-2024-orange" alt="Rust 2024">
   · <a href="README.md">Español</a>
+</p>
+
+<p align="center">
+  <img src="docs/demo.en.gif" width="820" alt="ttpblast demo running: the shuffle counter climbs as the signal separates from the noise, then the results table and the variant's alignment emerge; three hosts stand far above chance">
 </p>
 
 **Status: research demo (v0.2).** It works end to end on synthetic telemetry, in English
