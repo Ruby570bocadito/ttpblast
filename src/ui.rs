@@ -398,7 +398,11 @@ impl Drop for Progress {
 /// The monitor thread: redraw the line a few times a second until stopped.
 /// It is the only writer to stderr while the work runs, so nothing interleaves.
 fn run_monitor(shared: Arc<Shared>) {
-    const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    // A block that swells and shrinks: the same eighths as the signal bar, so
+    // the spinner reads as the signal itself, breathing while the work runs.
+    const FRAMES: [&str; 14] = [
+        "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█", "▉", "▊", "▋", "▌", "▍", "▎",
+    ];
     let (brand, quiet) = (Style::Brand.code(), Style::Quiet.code());
     let mut err = std::io::stderr();
     let mut frame = 0usize;

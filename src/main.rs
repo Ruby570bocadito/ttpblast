@@ -387,7 +387,7 @@ fn help() -> String {
     if i18n::english() {
         format!(
             "\n{logo}
-{name} {version} · Statistical threat hunting for endpoint telemetry
+{name} {version} · Find the variant hiding in the noise
 Searches your machines' telemetry for variants of a known attack chain and
 tells you, with an E-value, whether the resemblance is chance.
 
@@ -427,7 +427,7 @@ More at https://github.com/Ruby570bocadito/ttpblast
     } else {
         format!(
             "\n{logo}
-{name} {version} · Statistical threat hunting para telemetría de endpoint
+{name} {version} · Encuentra la variante escondida en el ruido
 Busca variantes de una cadena de ataque conocida en la telemetría de tus
 equipos y te dice, con un E-value, si el parecido es casualidad.
 

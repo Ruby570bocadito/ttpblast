@@ -23,8 +23,8 @@ pub fn run(opts: &Options) -> Result<(), String> {
         paint("ttpblast demo", Style::Brand),
         paint(
             t(
-                "· Statistical threat hunting para telemetría de endpoint",
-                "· Statistical threat hunting for endpoint telemetry"
+                "· Encuentra la variante escondida en el ruido",
+                "· Find the variant hiding in the noise"
             ),
             Style::Quiet
         ),
